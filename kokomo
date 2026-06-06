@@ -1,0 +1,1782 @@
+#!/usr/bin/env python3
+import eva
+
+
+
+
+M                   = eva.M
+ANSI                = None
+BORDER              = True
+BREATHER            = eva.Chrono(timeout=eva.SECOND * 10)
+CPU_HIGHEST_THREAD  = max(eva.CPU.get_cpus(possible=True))
+CPU_LAYOUT_FIELDS   = ('thread', 'temperature', 'load', 'minscal', 'frequency', 'maxscal')
+EVENTS              = None
+FAHRENHEIT          = False
+FONTS               = None
+GLYPHS              = None
+GUIDES              = None
+INTERVAL            = eva.SECOND / 2
+LOCK                = M.threading.RLock()
+MARGIN_PERCENTAGE   = 1
+SNAPSHOT            = None
+STRESS              = False
+STRESS_CHRONO       = eva.Chrono()
+TEMPERATURE_MAXIMUM = 999.0
+TEMPERATURE_MINIMUM = 0.0
+TERMINAL            = eva.Terminal()
+TIMEOUT_SMOOTHED    = eva.SECOND * 10
+VERSION             = '0.260606'
+WINDOWS             = None
+ZONES               = None
+
+
+
+
+@M.functools.cache
+def build_ansi():
+    sn  = M.types.SimpleNamespace
+    ret = sn()
+
+    ret.blink     = sn()
+    ret.blink.off = '\x1B[25m'
+    ret.blink.on  = '\x1B[5m'
+
+    ret.dim     = sn()
+    ret.dim.off = '\x1B[22m'
+    ret.dim.on  = '\x1B[2m'
+
+    ret.reverse     = sn()
+    ret.reverse.off = '\x1B[27m'
+    ret.reverse.on  = '\x1B[7m'
+
+    ret.default     = sn()
+    ret.default.all = '\x1B[0m'
+    ret.default.bg  = '\x1B[49m'
+    ret.default.fg  = '\x1B[39m'
+
+    ret.black          = sn(bg=sn(), fg=sn())
+    ret.black.bg.dark  = '\x1B[40m'
+    ret.black.bg.light = '\x1B[100m'
+    ret.black.fg.dark  = '\x1B[30m'
+    ret.black.fg.light = '\x1B[90m'
+
+    ret.blue          = sn(bg=sn(), fg=sn())
+    ret.blue.bg.dark  = '\x1B[44m'
+    ret.blue.bg.light = '\x1B[104m'
+    ret.blue.fg.dark  = '\x1B[34m'
+    ret.blue.fg.light = '\x1B[94m'
+
+    ret.cyan          = sn(bg=sn(), fg=sn())
+    ret.cyan.bg.dark  = '\x1B[46m'
+    ret.cyan.bg.light = '\x1B[106m'
+    ret.cyan.fg.dark  = '\x1B[36m'
+    ret.cyan.fg.light = '\x1B[96m'
+
+    ret.green          = sn(bg=sn(), fg=sn())
+    ret.green.bg.dark  = '\x1B[42m'
+    ret.green.bg.light = '\x1B[102m'
+    ret.green.fg.dark  = '\x1B[32m'
+    ret.green.fg.light = '\x1B[92m'
+
+    ret.magenta          = sn(bg=sn(), fg=sn())
+    ret.magenta.bg.dark  = '\x1B[45m'
+    ret.magenta.bg.light = '\x1B[105m'
+    ret.magenta.fg.dark  = '\x1B[35m'
+    ret.magenta.fg.light = '\x1B[95m'
+
+    ret.red          = sn(bg=sn(), fg=sn())
+    ret.red.bg.dark  = '\x1B[41m'
+    ret.red.bg.light = '\x1B[101m'
+    ret.red.fg.dark  = '\x1B[31m'
+    ret.red.fg.light = '\x1B[91m'
+
+    ret.white          = sn(bg=sn(), fg=sn())
+    ret.white.bg.dark  = '\x1B[47m'
+    ret.white.bg.light = '\x1B[107m'
+    ret.white.fg.dark  = '\x1B[37m'
+    ret.white.fg.light = '\x1B[97m'
+
+    ret.yellow          = sn(bg=sn(), fg=sn())
+    ret.yellow.bg.dark  = '\x1B[43m'
+    ret.yellow.bg.light = '\x1B[103m'
+    ret.yellow.fg.dark  = '\x1B[33m'
+    ret.yellow.fg.light = '\x1B[93m'
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_events():
+    ret        = M.types.SimpleNamespace()
+    ret.bye    = M.threading.Event()
+    ret.screen = M.threading.Event()
+    ret.stress = M.threading.Event()
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_fonts():
+    fallback = '?'
+    ret      = M.types.SimpleNamespace()
+
+    glyphs      = build_glyphs().heavy
+    medium      = {}
+    medium[' '] = [f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}']
+    medium['%'] = [f'{glyphs.es}{glyphs.sw}{glyphs.s}',
+                   f'{glyphs.es}{glyphs.ew}{glyphs.nw}',
+                   f'{glyphs.n}{glyphs.ne}{glyphs.nw}']
+    medium[','] = [f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.nw}{glyphs.none}']
+    medium['.'] = [f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.n}{glyphs.none}']
+    medium['0'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.ns}{glyphs.ns}{glyphs.ns}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['1'] = [f'{glyphs.e}{glyphs.sw}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.ns}{glyphs.none}',
+                   f'{glyphs.e}{glyphs.new}{glyphs.w}']
+    medium['2'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.es}{glyphs.ew}{glyphs.nw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.w}']
+    medium['3'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.e}{glyphs.ew}{glyphs.nsw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['4'] = [f'{glyphs.s}{glyphs.none}{glyphs.s}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nsw}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.n}']
+    medium['5'] = [f'{glyphs.es}{glyphs.ew}{glyphs.w}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['6'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.nes}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['7'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.ns}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.n}']
+    medium['8'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.nes}{glyphs.ew}{glyphs.nsw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['9'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nsw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['?'] = [f'{glyphs.es}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.none}{glyphs.ew}{glyphs.nw}',
+                   f'{glyphs.none}{glyphs.n}{glyphs.none}']
+    medium['C'] = [f'{glyphs.es}{glyphs.ew}{glyphs.w}',
+                   f'{glyphs.ns}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.w}']
+    medium['F'] = [f'{glyphs.es}{glyphs.ew}{glyphs.w}',
+                   f'{glyphs.nes}{glyphs.ew}{glyphs.none}',
+                   f'{glyphs.n}{glyphs.none}{glyphs.none}']
+    medium['G'] = [f'{glyphs.es}{glyphs.ew}{glyphs.w}',
+                   f'{glyphs.ns}{glyphs.e}{glyphs.sw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.nw}']
+    medium['H'] = [f'{glyphs.s}{glyphs.none}{glyphs.s}',
+                   f'{glyphs.nes}{glyphs.ew}{glyphs.nsw}',
+                   f'{glyphs.n}{glyphs.none}{glyphs.n}']
+    medium['M'] = [f'{glyphs.es}{glyphs.esw}{glyphs.sw}',
+                   f'{glyphs.ns}{glyphs.ns}{glyphs.ns}',
+                   f'{glyphs.n}{glyphs.none}{glyphs.n}']
+    medium['Z'] = [f'{glyphs.e}{glyphs.ew}{glyphs.sw}',
+                   f'{glyphs.es}{glyphs.ew}{glyphs.nw}',
+                   f'{glyphs.ne}{glyphs.ew}{glyphs.w}']
+    medium['°'] = [f'{glyphs.none}{glyphs.s}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}',
+                   f'{glyphs.none}{glyphs.none}{glyphs.none}']
+
+    small      = { key: [key] for key in medium.keys() }
+    ret.medium = M.types.SimpleNamespace(glyphs=medium)
+    ret.small  = M.types.SimpleNamespace(glyphs=small)
+
+    for properties in vars(ret).values():
+        properties.fallback = list(properties.glyphs[fallback])
+        properties.height   = len(properties.fallback)
+        properties.width    = len(properties.fallback[0])
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_glyphs():
+    sn  = M.types.SimpleNamespace
+    ret = sn()
+
+    ret.arc      = sn()
+    ret.arc.all  = '┼'
+    ret.arc.none = ' '
+    ret.arc.e    = '╶'
+    ret.arc.n    = '╵'
+    ret.arc.s    = '╷'
+    ret.arc.w    = '╴'
+    ret.arc.ew   = '─'
+    ret.arc.ns   = '│'
+    ret.arc.es   = '╭'
+    ret.arc.ne   = '╰'
+    ret.arc.nw   = '╯'
+    ret.arc.sw   = '╮'
+    ret.arc.esw  = '┬'
+    ret.arc.nes  = '├'
+    ret.arc.new  = '┴'
+    ret.arc.nsw  = '┤'
+
+    ret.heavy      = sn()
+    ret.heavy.all  = '╋'
+    ret.heavy.none = ' '
+    ret.heavy.e    = '╺'
+    ret.heavy.n    = '╹'
+    ret.heavy.s    = '╻'
+    ret.heavy.w    = '╸'
+    ret.heavy.ew   = '━'
+    ret.heavy.ns   = '┃'
+    ret.heavy.es   = '┏'
+    ret.heavy.ne   = '┗'
+    ret.heavy.nw   = '┛'
+    ret.heavy.sw   = '┓'
+    ret.heavy.esw  = '┳'
+    ret.heavy.nes  = '┣'
+    ret.heavy.new  = '┻'
+    ret.heavy.nsw  = '┫'
+
+    ret.light    = sn(**vars(ret.arc))
+    ret.light.es = '┌'
+    ret.light.ne = '└'
+    ret.light.nw = '┘'
+    ret.light.sw = '┐'
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_guides():
+    ret    = M.types.SimpleNamespace()
+    ret.h0 = Guide()
+    ret.h1 = Guide()
+    ret.h2 = Guide()
+    ret.h3 = Guide()
+    ret.h4 = Guide()
+    ret.h5 = Guide()
+    ret.h6 = Guide()
+    ret.v1 = Guide()
+    ret.v2 = Guide()
+    ret.v3 = Guide()
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_windows():
+    ret           = M.types.SimpleNamespace()
+    ret.cpus      = CPUs(border=BORDER,      title='CPUS')
+    ret.current   = Current(border=BORDER,   title='CURRENT')
+    ret.histogram = Histogram(border=BORDER, title='HISTOGRAM')
+    ret.load      = Load(border=BORDER,      title='LOAD')
+    ret.maximum   = Maximum(border=BORDER,   title='MAXIMUM')
+    ret.minimum   = Minimum(border=BORDER,   title='MINIMUM')
+    ret.smoothed  = Smoothed(border=BORDER,  title='SMOOTHED')
+
+    return ret
+
+
+
+
+@M.functools.cache
+def build_zones():
+    ansi        = build_ansi()
+    ret         = M.types.SimpleNamespace()
+    ret.highest = M.types.SimpleNamespace(color=ansi.magenta, load=85.0, temperature=80.0)
+    ret.high    = M.types.SimpleNamespace(color=ansi.red,     load=50.0, temperature=65.0)
+    ret.medium  = M.types.SimpleNamespace(color=ansi.yellow,  load=25.0, temperature=50.0)
+    ret.low     = M.types.SimpleNamespace(color=ansi.green,   load=10.0, temperature=30.0)
+    ret.lowest  = M.types.SimpleNamespace(color=ansi.blue,    load=0.0,  temperature=0.0)
+
+    return ret
+
+
+
+
+def calc_guide_position(*, guides, index, length, margin):
+    guides = eva.normalize_integer(guides, minimum=2)
+    length = eva.normalize_integer(length, minimum=1)
+    margin = eva.normalize_integer(margin, minimum=0)
+    index  = eva.normalize_float(index, maximum=guides, minimum=1)
+
+    windows  = guides - 1
+    free     = length - (guides * margin)
+    step     = margin + (free / windows)
+    position = step * (index - 1)
+    position = position + 1
+
+    return position
+
+
+
+
+def calc_positions_and_sizes(*, height, width):
+    height   = eva.normalize_integer(height, minimum=0)
+    width    = eva.normalize_integer(width, minimum=0)
+    snapshot = SNAPSHOT
+    margin   = M.math.sqrt(height * width) / 100 * MARGIN_PERCENTAGE
+    margin   = eva.normalize_integer(margin, minimum=0)
+
+    if height < 11: # 11 -> h1 + smoothed + h2 + load + h3 + minimum + h4 + current + h5 + maximum + h6
+        margin = 0
+
+    h0 = GUIDES.h0
+    h1 = GUIDES.h1
+    h2 = GUIDES.h2
+    h3 = GUIDES.h3
+    h4 = GUIDES.h4
+    h5 = GUIDES.h5
+    h6 = GUIDES.h6
+
+    v1 = GUIDES.v1
+    v2 = GUIDES.v2
+    v3 = GUIDES.v3
+
+    cpus      = WINDOWS.cpus
+    current   = WINDOWS.current
+    histogram = WINDOWS.histogram
+    load      = WINDOWS.load
+    maximum   = WINDOWS.maximum
+    minimum   = WINDOWS.minimum
+    smoothed  = WINDOWS.smoothed
+
+    v1.height = height
+    v1.width  = margin
+    v1.x      = 1
+    v1.y      = 1
+
+    v2.height = height
+    v2.width  = margin
+    v2.x      = calc_guide_position(index=2.333, length=width, margin=margin, guides=3)
+    v2.y      = 1
+
+    v3.height = height
+    v3.width  = margin
+    v3.x      = calc_guide_position(index=3, length=width, margin=margin, guides=3)
+    v3.y      = 1
+
+    h1.height = margin
+    h1.width  = width
+    h1.x      = 1
+    h1.y      = 1
+
+    h2.height = margin
+    h2.width  = (v3.x + v3.width) - v2.x
+    h2.x      = v2.x
+    h2.y      = calc_guide_position(index=2, length=height, margin=margin, guides=6)
+
+    h3.height = margin
+    h3.width  = h2.width
+    h3.x      = h2.x
+    h3.y      = calc_guide_position(index=3, length=height, margin=margin, guides=6)
+
+    h4.height = margin
+    h4.width  = h2.width
+    h4.x      = h2.x
+    h4.y      = calc_guide_position(index=4, length=height, margin=margin, guides=6)
+
+    h5.height = margin
+    h5.width  = h2.width
+    h5.x      = h2.x
+    h5.y      = calc_guide_position(index=5, length=height, margin=margin, guides=6)
+
+    h6.height = margin
+    h6.width  = width
+    h6.x      = 1
+    h6.y      = calc_guide_position(index=6, length=height, margin=margin, guides=6)
+
+    h0.height   = margin
+    h0.width    = (v2.x + v2.width) - v1.x
+    h0.x        = 1
+    h0.y        = calc_guide_position(index=2, length=height, margin=margin, guides=3)
+    cpus.height = len(snapshot.cpus) + (3 if cpus.border else 1) # 3 -> border + header + border, 1 -> header
+    h0.y        = min(h0.y, cpus.height + h1.height + h1.y)
+
+    if margin:
+        v1.width += margin
+        v2.width += margin
+        v3.x     -= margin
+        v3.width += margin
+
+    cpus.height = h0.y - h1.y - h1.height
+    cpus.width  = v2.x - v1.x - v1.width
+    cpus.x      = v1.x + v1.width
+    cpus.y      = h1.y + h1.height
+
+    histogram.height = h6.y - h0.y - h0.height
+    histogram.width  = cpus.width
+    histogram.x      = cpus.x
+    histogram.y      = h0.y + h0.height
+
+    smoothed.height = h2.y - h1.y - h1.height
+    smoothed.width  = v3.x - v2.x - v2.width
+    smoothed.x      = v2.x + v2.width
+    smoothed.y      = h1.y + h1.height
+
+    load.height = h3.y - h2.y - h2.height
+    load.width  = smoothed.width
+    load.x      = smoothed.x
+    load.y      = h2.y + h2.height
+
+    minimum.height = h4.y - h3.y - h3.height
+    minimum.width  = smoothed.width
+    minimum.x      = smoothed.x
+    minimum.y      = h3.y + h3.height
+
+    current.height = h5.y - h4.y - h4.height
+    current.width  = smoothed.width
+    current.x      = smoothed.x
+    current.y      = h4.y + h4.height
+
+    maximum.height = h6.y - h5.y - h5.height
+    maximum.width  = smoothed.width
+    maximum.x      = smoothed.x
+    maximum.y      = h5.y + h5.height
+
+
+
+
+def main():
+    global ANSI, EVENTS, FAHRENHEIT, FONTS, GLYPHS, GUIDES, STRESS, WINDOWS, ZONES
+
+    if arguments := parse_arguments():
+        FAHRENHEIT = arguments.fahrenheit
+        STRESS     = arguments.stress
+
+        if arguments.help:
+            show_usage_and_exit(error=False)
+    else:
+        show_usage_and_exit(error=True)
+
+    M.signal.signal(M.signal.SIGINT,   signal_handler_graceful_exit)
+    M.signal.signal(M.signal.SIGTERM,  signal_handler_graceful_exit)
+    M.signal.signal(M.signal.SIGWINCH, signal_handler_window_resized)
+
+    ANSI    = build_ansi()
+    EVENTS  = build_events()
+    FONTS   = build_fonts()
+    GLYPHS  = build_glyphs()
+    ZONES   = build_zones()
+
+    GUIDES  = build_guides()
+    WINDOWS = build_windows()
+
+    keyboard = M.threading.Thread(daemon=True, target=target_keyboard)
+    mouse    = M.threading.Thread(daemon=True, target=target_mouse)
+    screen   = M.threading.Thread(daemon=True, target=target_screen)
+    snapshot = M.threading.Thread(daemon=True, target=target_snapshot)
+    stress   = M.threading.Thread(daemon=True, target=target_stress)
+    threads  = (snapshot,) + (keyboard, mouse, stress) + (screen,)
+
+    try:
+        TERMINAL.save_cursor()
+        TERMINAL.enable_alt_screen()
+        TERMINAL.clear_screen()
+        TERMINAL.disable_cursor()
+        TERMINAL.move_home()
+
+        for thread in threads:
+            thread.start()
+
+        EVENTS.bye.wait()
+
+        for event in vars(EVENTS).values():
+            event.set()
+
+        for thread in threads:
+            thread.join()
+    finally:
+        TERMINAL.enable_cursor()
+        TERMINAL.clear_screen()
+        TERMINAL.disable_alt_screen()
+        TERMINAL.restore_cursor()
+
+
+
+
+def parse_arguments():
+    def argparse_error_handler(message='', /):
+        raise M.argparse.ArgumentError(None, message)
+
+    parser       = M.argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
+    parser.error = argparse_error_handler
+
+    parser.add_argument('-f', '--fahrenheit', action='count', default=0)
+    parser.add_argument('-h', '--help',       action='count', default=0)
+    parser.add_argument('-s', '--stress',     action='count', default=0)
+
+    try:
+        arguments = parser.parse_args()
+
+        if any( argument > 1 for argument in vars(arguments).values() ):
+            argparse_error_handler()
+
+        ret            = M.types.SimpleNamespace()
+        ret.fahrenheit = bool(arguments.fahrenheit)
+        ret.help       = bool(arguments.help)
+        ret.stress     = bool(arguments.stress)
+    except M.argparse.ArgumentError:
+        ret = False
+
+    return ret
+
+
+
+
+def precompile_frequency(value, /, *, compact=False, ghz=False):
+    compact   = bool(compact)
+    fstr      = '{align}{affix}'
+    ghz       = bool(ghz)
+    affix     = 'GHz' if ghz else 'MHz'
+    divisor   = 1000 if ghz else 1
+    maximum   = 9.9 if ghz else 9999.0
+    minimum   = 0.0
+    padding   = 3 if ghz else 4
+    precision = 1 if ghz else 0
+    space     = ' '
+    value     = maximum if value is None else float(value)
+    value     = value / divisor
+    string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+
+    if compact:
+        affix = affix[0]
+
+    ret         = M.types.SimpleNamespace()
+    ret.affix   = affix
+    ret.align   = string.rjust(padding, space)
+    ret.full    = fstr.format(affix=affix, align=ret.align)
+    ret.compact = ret.full.strip(space)
+    ret.string  = string
+    ret.value   = float(string)
+
+    return ret
+
+
+
+
+def precompile_load(value, /, *, integer=False):
+    affix     = '%'
+    fstr      = '{align}{affix}'
+    integer   = bool(integer)
+    maximum   = 100.0
+    minimum   = 0.0
+    padding   = 3 if integer else 4
+    precision = 0 if integer else 1
+    space     = ' '
+    value     = maximum if value is None else float(value)
+    string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+    value     = float(string)
+
+    if value >= 100:
+        precision = 0
+        string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+        value     = float(string)
+
+    ret         = M.types.SimpleNamespace()
+    ret.affix   = affix
+    ret.align   = string.rjust(padding, space)
+    ret.color   = select_color_by_load(value)
+    ret.full    = fstr.format(affix=affix, align=ret.align)
+    ret.compact = ret.full.strip(space)
+    ret.string  = string
+    ret.value   = value
+
+    return ret
+
+
+
+
+def precompile_temperature(value, /, *, integer=False):
+    affix     = '°F' if FAHRENHEIT else '°C'
+    fstr      = '{align}{affix}'
+    integer   = bool(integer)
+    maximum   = TEMPERATURE_MAXIMUM
+    minimum   = TEMPERATURE_MINIMUM
+    padding   = 3 if FAHRENHEIT or integer else 4
+    precision = 0 if FAHRENHEIT or integer else 1
+    space     = ' '
+    value     = maximum if value is None else float(value)
+
+    if value >= 100:
+        precision = 0
+
+    string  = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+    celsius = float(string)
+
+    if FAHRENHEIT:
+        value  = (value * 1.8) + 32
+        string = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+
+    ret         = M.types.SimpleNamespace()
+    ret.affix   = affix
+    ret.align   = string.rjust(padding, space)
+    ret.celsius = celsius
+    ret.color   = select_color_by_temperature(celsius)
+    ret.full    = fstr.format(affix=affix, align=ret.align)
+    ret.compact = ret.full.strip(space)
+    ret.string  = string
+    ret.value   = float(string)
+
+    return ret
+
+
+
+
+def precompile_thread(value, /):
+    affix     = 'CPU'
+    fstr      = '{affix}{align}'
+    maximum   = CPU_HIGHEST_THREAD
+    minimum   = 0
+    value     = maximum if value is None else eva.clamp(value, minimum, maximum)
+    padding   = len(str(maximum))
+    space     = ' '
+    string    = str(value)
+
+    ret         = M.types.SimpleNamespace()
+    ret.affix   = affix
+    ret.align   = string.ljust(padding, space)
+    ret.full    = fstr.format(affix=affix, align=ret.align)
+    ret.compact = ret.full.strip(space)
+    ret.string  = string
+    ret.value   = value
+
+    return ret
+
+
+
+
+def select_color_by_load(value, /):
+    value = max(float(value), 0.0)
+    zones = vars(ZONES).values()
+    zones = sorted(zones, key=lambda i: i.load, reverse=True)
+    ret   = next( zone.color for zone in zones if value >= zone.load )
+
+    return ret
+
+
+
+
+def select_color_by_temperature(value, /):
+    value = max(float(value), 0.0)
+    zones = vars(ZONES).values()
+    zones = sorted(zones, key=lambda i: i.temperature, reverse=True)
+    ret   = next( zone.color for zone in zones if value >= zone.temperature )
+
+    return ret
+
+
+
+
+def show_usage_and_exit(*, error):
+    arguments = '[-f|--fahrenheit] [-h|--help] [-s|--stress]'
+    error     = bool(error)
+    code      = int(error)
+    printx    = eva.printe if error else eva.printo
+
+    printx(f'version: {VERSION}')
+    printx(f'usage:   {arguments}')
+
+    M.sys.exit(code)
+
+
+
+
+def signal_handler_graceful_exit(*args, **kwargs):
+    force = False
+
+    for name in ('bye', 'screen', 'stress'):
+        if (event := getattr(EVENTS, name, None)) is None:
+            force = True
+        else:
+            event.set()
+
+    if force:
+        M.sys.exit()
+
+
+
+
+def signal_handler_window_resized(*args, **kwargs):
+    mask     = {M.signal.SIGWINCH}
+    previous = M.signal.pthread_sigmask(M.signal.SIG_BLOCK, mask)
+
+    try:
+        with M.contextlib.suppress(AttributeError):
+            if not EVENTS.screen.is_set():
+                EVENTS.screen.set()
+    finally:
+        M.signal.pthread_sigmask(M.signal.SIG_SETMASK, previous)
+
+
+
+
+def target_keyboard():
+    try:
+        code_arrow_down  = b'\x1B[B'
+        code_arrow_left  = b'\x1B[D'
+        code_arrow_right = b'\x1B[C'
+        code_arrow_up    = b'\x1B[A'
+        code_escape      = b'\x1B'
+        code_lower_q     = b'q'
+        code_lower_r     = b'r'
+        code_space       = b' '
+        code_upper_q     = code_lower_q.upper()
+        code_upper_r     = code_lower_r.upper()
+        codes_break      = (code_escape, code_lower_q, code_upper_q)
+
+        dispatcher = {
+            code_arrow_down:  WINDOWS.cpus.scroll_down,
+            code_arrow_left:  WINDOWS.cpus.select_left,
+            code_arrow_right: WINDOWS.cpus.select_right,
+            code_arrow_up:    WINDOWS.cpus.scroll_up,
+            code_lower_r:     WINDOWS.cpus.toggle_reverse,
+            code_space:       toggle_stress,
+            code_upper_r:     WINDOWS.cpus.toggle_reverse,
+        }
+
+        with eva.Reader() as reader:
+            while not EVENTS.bye.is_set():
+                chunk = reader.poll()
+
+                if chunk is None:
+                    continue
+                elif chunk in codes_break or chunk is False:
+                    break
+
+                dispatcher.get(chunk, eva.noop)()
+    finally:
+        EVENTS.bye.set()
+
+
+
+
+def target_mouse():
+    try:
+        ansi_mouse_off  = '\x1B[?1000l'
+        ansi_mouse_on   = '\x1B[?1000h'
+        chrono          = eva.Chrono(timeout=0.015)
+        code_wheel_down = b'\x1B\x5B\x4D\x61'
+        code_wheel_up   = b'\x1B\x5B\x4D\x60'
+        previous        = None
+
+        dispatcher = {
+            code_wheel_down: WINDOWS.cpus.scroll_down,
+            code_wheel_up:   WINDOWS.cpus.scroll_up,
+        }
+
+        TERMINAL.write(ansi_mouse_on)
+
+        with eva.Reader() as reader:
+            while not EVENTS.bye.is_set():
+                chunk = reader.poll()
+
+                if chunk is None:
+                    continue
+                elif chunk is False:
+                    break
+                elif (chunk := chunk[0:4]) == previous and not chrono.expired:
+                    continue
+                else:
+                    previous = chunk
+
+                    chrono.reset()
+
+                dispatcher.get(chunk, eva.noop)()
+    finally:
+        TERMINAL.write(ansi_mouse_off)
+        EVENTS.bye.set()
+
+
+
+
+def target_screen():
+    try:
+        fingerprint = None
+
+        while True:
+            EVENTS.screen.wait()
+            EVENTS.screen.clear()
+
+            if EVENTS.bye.is_set():
+                break
+
+            height = TERMINAL.height
+            width  = TERMINAL.width
+            size   = (height, width)
+
+            if fingerprint != size:
+                fingerprint = size
+
+                TERMINAL.clear_screen()
+                calc_positions_and_sizes(height=height, width=width)
+
+                for guide in vars(GUIDES).values():
+                    guide.show()
+
+            for window in vars(WINDOWS).values():
+                window.show()
+    finally:
+        EVENTS.bye.set()
+
+
+
+
+def target_snapshot():
+    try:
+        global SNAPSHOT
+
+        by_thread = lambda cpu: cpu.thread
+        chrono    = eva.Chrono(timeout=INTERVAL)
+        maximum   = TEMPERATURE_MINIMUM
+        minimum   = TEMPERATURE_MAXIMUM
+        samples   = M.collections.deque()
+
+        while True:
+            chrono.reset()
+
+            cpus        = []
+            load        = eva.CPU.load
+            temperature = eva.CPU.temperature
+            maximum     = max(temperature, maximum) if BREATHER.expired else temperature
+            minimum     = min(temperature, minimum)
+
+            sample             = M.types.SimpleNamespace()
+            sample.chrono      = eva.Chrono(timeout=TIMEOUT_SMOOTHED)
+            sample.temperature = temperature
+
+            while samples:
+                if samples[0].chrono.expired:
+                    samples.popleft()
+                else:
+                    break
+
+            samples.append(sample)
+
+            for cpu in eva.CPU.get_cpus(auto=True, online=True):
+                sample = M.types.SimpleNamespace()
+
+                for name in CPU_LAYOUT_FIELDS:
+                    value = getattr(cpu, name)
+
+                    setattr(sample, name, value)
+
+                cpus.append(sample)
+
+            cpus.sort(key=by_thread)
+
+            snapshot          = M.types.SimpleNamespace()
+            snapshot.cpus     = tuple(cpus)
+            snapshot.load     = load
+            snapshot.maximum  = maximum
+            snapshot.minimum  = minimum
+            snapshot.current  = temperature
+            snapshot.smoothed = M.statistics.mean( sample.temperature for sample in samples )
+            SNAPSHOT          = snapshot
+
+            EVENTS.screen.set()
+
+            if EVENTS.bye.wait(chrono.remaining):
+                break
+    finally:
+        EVENTS.bye.set()
+
+
+
+
+def target_stress():
+    if STRESS:
+        try:
+            context = M.multiprocessing.get_context('spawn')
+            tasks   = []
+
+            def append_task(cpu, /):
+                target  = target_stressor
+                stop    = context.Event()
+                args    = (cpu, stop)
+                process = context.Process(args=args, daemon=False, target=target)
+                task    = M.types.SimpleNamespace(cpu=cpu, process=process, stop=stop)
+
+                tasks.append(task)
+                process.start()
+
+                with M.contextlib.suppress(OSError):
+                    M.os.sched_setaffinity(process.pid, {task.cpu})
+
+            def discard_task(task, /):
+                task.stop.set()
+                task.process.join()
+                tasks.remove(task)
+
+            while True:
+                bye = EVENTS.bye.is_set()
+
+                if bye or not EVENTS.stress.is_set():
+                    for task in list(tasks):
+                        discard_task(task)
+
+                    if bye:
+                        break
+                    else:
+                        EVENTS.stress.wait()
+
+                for task in list(tasks):
+                    try:
+                        affinity = M.os.sched_getaffinity(task.process.pid)
+                    except OSError:
+                        affinity = None
+
+                    if affinity != {task.cpu} or not task.process.is_alive():
+                        append_task(task.cpu)
+                        discard_task(task)
+
+                cpus = set(eva.CPU.get_cpus(online=True)) - set( task.cpu for task in tasks )
+
+                for cpu in cpus:
+                    append_task(cpu)
+        finally:
+            EVENTS.bye.set()
+
+
+
+
+def target_stressor(cpu, stop, /):
+    mask = {cpu}
+    pid  = 0
+
+    with M.contextlib.suppress(OSError):
+        M.os.sched_setaffinity(pid, mask)
+
+        while not stop.is_set():
+            pass
+
+
+
+
+def toggle_stress():
+    if STRESS:
+        with LOCK:
+            if EVENTS.stress.is_set():
+                EVENTS.stress.clear()
+            else:
+                STRESS_CHRONO.reset()
+                EVENTS.stress.set()
+
+        WINDOWS.cpus.show()
+
+
+
+
+class Box:
+    _border_glyphs  = build_glyphs().arc
+    _minimum_height = 0
+    _minimum_width  = 0
+    _minimum_x      = 1
+    _minimum_y      = 1
+
+
+    def _fget_height(self, /):
+        return self._height
+
+
+    def _fget_inner(self, /):
+        with self._instance_lock:
+            border = getattr(self, 'border', False)
+            height = self.height
+            width  = self.width
+
+        if border:
+            height = max(height - 2, 0) # 2 -> border + border
+            width  = max(width  - 4, 0) # 4 -> border + space + space + border
+
+        return M.types.SimpleNamespace(height=height, width=width)
+
+
+    def _fget_width(self, /):
+        return self._width
+
+
+    def _fget_x(self, /):
+        return self._x
+
+
+    def _fget_y(self, /):
+        return self._y
+
+
+    def _fset_height(self, value, /):
+        value = eva.normalize_integer(value, minimum=self._minimum_height)
+
+        with self._instance_lock:
+            self._height = value
+
+
+    def _fset_width(self, value, /):
+        value = eva.normalize_integer(value, minimum=self._minimum_width)
+
+        with self._instance_lock:
+            self._width = value
+
+
+    def _fset_x(self, value, /):
+        value = eva.normalize_integer(value, minimum=self._minimum_x)
+
+        with self._instance_lock:
+            self._x = value
+
+
+    def _fset_y(self, value, /):
+        value = eva.normalize_integer(value, minimum=self._minimum_y)
+
+        with self._instance_lock:
+            self._y = value
+
+
+    height = property(fget=_fget_height, fset=_fset_height)
+    inner  = property(fget=_fget_inner)
+    width  = property(fget=_fget_width,  fset=_fset_width)
+    x      = property(fget=_fget_x,      fset=_fset_x)
+    y      = property(fget=_fget_y,      fset=_fset_y)
+
+
+    def __init__(self, /, *, height=None, width=None, x=None, y=None):
+        self._instance_lock = M.threading.RLock()
+
+        self.height = self._minimum_height if height is None else height
+        self.width  = self._minimum_width  if width  is None else width
+        self.x      = self._minimum_x      if x      is None else x
+        self.y      = self._minimum_y      if y      is None else y
+
+
+    def _render(self, *args, **kwargs):
+        return self._render_noise(*args, **kwargs)
+
+
+    def _render_empty(self, /, *, height, width):
+        height = eva.normalize_integer(height, minimum=self._minimum_height)
+        space  = ' '
+        width  = eva.normalize_integer(width, minimum=self._minimum_width)
+
+        line  = space * width
+        lines = [line] * height
+
+        return M.os.linesep.join(lines)
+
+
+    def _render_noise(self, /, *, height, width):
+        empty  = ''
+        glyphs = ('░', '▒', '█')
+        height = eva.normalize_integer(height, minimum=self._minimum_height)
+        output = []
+        width  = eva.normalize_integer(width, minimum=self._minimum_width)
+
+        for _ in range(height):
+            line = empty.join( M.random.choice(glyphs) for _ in range(width) )
+
+            output.append(line)
+
+        return M.os.linesep.join(output)
+
+
+    def show(self, /):
+        blank         = f'{ANSI.blink.on}{ANSI.red.fg.dark}╳{ANSI.default.all}'
+        empty         = ''
+        fstr_position = '\x1B[{y};{x}H'
+        output        = []
+        space         = ' '
+
+        with self._instance_lock:
+            box        = M.types.SimpleNamespace()
+            box.border = getattr(self, 'border', False)
+            box.height = self.height
+            box.title  = getattr(self, 'title', empty)
+            box.width  = self.width
+            box.x      = self.x
+            box.y      = self.y
+            inner      = self.inner
+
+        if inner.height and inner.width:
+            if isinstance(render := self._render(height=inner.height, width=inner.width), str):
+                output = render.split(M.os.linesep)
+
+                if len(output) < inner.height:
+                    padding = [blank * inner.width] * max(inner.height - len(output), 0)
+                    output  = output + padding
+                else:
+                    output = output[:inner.height]
+
+                if box.border:
+                    style_border_off = ANSI.dim.off
+                    style_border_on  = ANSI.dim.on
+                    style_title_off  = empty
+                    style_title_on   = ANSI.default.fg
+
+                    style_bottom = f'{style_border_on}{self._border_glyphs.ew}{style_border_off}'
+                    style_end    = f'{style_border_on}{space}{self._border_glyphs.ns}{style_border_off}'
+                    style_es     = f'{style_border_on}{self._border_glyphs.es}{style_border_off}'
+                    style_ne     = f'{style_border_on}{self._border_glyphs.ne}{style_border_off}'
+                    style_nw     = f'{style_border_on}{self._border_glyphs.nw}{style_border_off}'
+                    style_start  = f'{style_border_on}{self._border_glyphs.ns}{space}{style_border_off}'
+                    style_sw     = f'{style_border_on}{self._border_glyphs.sw}{style_border_off}'
+                    style_top    = f'{style_border_on}{self._border_glyphs.ew}{style_border_off}'
+
+                    bottom = style_bottom * (box.width - 2) # 2 -> corner + corner
+
+                    if box.title:
+                        title = box.title[:inner.width]
+                        free  = inner.width - len(title)
+                        end   = style_top * M.math.ceil(free / 2)
+                        start = style_top * M.math.floor(free / 2)
+                        top = f'{start}{space}{style_title_on}{title}{style_title_off}{space}{end}'
+                    else:
+                        top = style_top * (box.width - 2) # 2 -> corner + corner
+
+                    bottom = f'{style_ne}{bottom}{style_nw}'
+                    output = [ f'{style_start}{line}{style_end}' for line in output ]
+                    top    = f'{style_es}{top}{style_sw}'
+                    output = [top] + output + [bottom]
+
+        if len(output) < box.height:
+            padding = [blank * box.width] * max(box.height - len(output), 0)
+            output  = output + padding
+        else:
+            output = output[:box.height]
+
+        for i, line in enumerate(output):
+            position  = fstr_position.format(x=box.x, y=box.y + i)
+            output[i] = f'{position}{line}{ANSI.default.all}'
+
+        TERMINAL.write(empty.join(output))
+
+
+
+
+class Guide(Box):
+    def _render(self, *args, **kwargs):
+        return self._render_empty(*args, **kwargs)
+
+
+
+
+class Window(Box):
+    def _fget_border(self, /):
+        return self._border
+
+
+    def _fget_title(self, /):
+        return self._title
+
+
+    def _fset_border(self, value, /):
+        value = bool(value)
+
+        with self._instance_lock:
+            self._border = value
+
+
+    def _fset_title(self, value, /):
+        value = eva.normalize_text(value, full=True)
+
+        with self._instance_lock:
+            self._title = value
+
+
+    border = property(fget=_fget_border, fset=_fset_border)
+    title  = property(fget=_fget_title,  fset=_fset_title)
+
+
+    def __init__(self, *args, border=False, title=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.border = border
+        self.title  = '' if title is None else title
+
+
+
+
+class CPUs(Window):
+    _arrow_both    = '↕'
+    _arrow_down    = '↓'
+    _arrow_up      = '↑'
+    _default_focus = 'thread'
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._fields       = M.collections.deque(CPU_LAYOUT_FIELDS)
+        self._fingerprint  = None
+        self._layout       = False
+        self._reverse      = False
+        self._scroll_index = 0
+        self._viewport     = 0
+
+
+    def _calc_layout(self, /, *, cpus):
+        by_length   = lambda layout: layout.length.minimum
+        cls         = self.__class__
+        arrow       = cls._arrow_both
+        copy        = lambda sn: M.types.SimpleNamespace(**vars(sn))
+        cpus        = eva.normalize_integer(cpus, minimum=1)
+        empty       = ''
+        fingerprint = M.types.SimpleNamespace()
+        fstr        = '{thread} {temperature} {load} {minscal} {frequency} {maxscal}{sep1}{bar}{sep2}{scroll}'
+        space       = ' '
+
+        with self._instance_lock:
+            size     = self.inner
+            viewport = min(cpus, size.height - 1) # 1 -> header
+            overflow = cpus > viewport
+
+            self._scroll_index = eva.clamp(self._scroll_index, 0, cpus - viewport)
+            self._viewport     = viewport
+
+            fingerprint.cpus   = cpus
+            fingerprint.height = size.height
+            fingerprint.width  = size.width
+
+            if self._fingerprint == fingerprint:
+                return self._layout
+            else:
+                self._fingerprint = fingerprint
+                self._layout      = False
+
+            if not viewport:
+                return
+
+            dummy             = M.types.SimpleNamespace()
+            dummy.bar         = empty
+            dummy.frequency   = None
+            dummy.load        = None
+            dummy.scroll      = arrow if overflow else empty
+            dummy.sep1        = empty
+            dummy.sep2        = space if overflow else empty
+            dummy.temperature = None
+            dummy.thread      = None
+
+            # CPU0 99.9°C 99.9% 1234MHz 1234MHz 1234MHz
+            full          = M.types.SimpleNamespace()
+            full.compact  = False
+            full.fstr     = fstr
+            full.ghz      = False
+            full.integer  = False
+            full.overflow = overflow
+
+            # CPU0 99.9°C 99.9% 1234M 1234M 1234M
+            compact         = copy(full)
+            compact.compact = True
+
+            # CPU0 100°C 100% 1234M 1234M 1234M
+            integer         = copy(compact)
+            integer.integer = True
+
+            # CPU0 100°C 100% 9.9G 9.9G 9.9G
+            ghz     = copy(integer)
+            ghz.ghz = True
+
+            layouts = (full, compact, integer, ghz)
+
+            for layout in layouts:
+                frequency     = precompile_frequency(dummy.frequency, ghz=layout.ghz, compact=layout.compact).full
+                layout.length = M.types.SimpleNamespace()
+
+                kwargs                = dict()
+                kwargs['bar']         = dummy.bar
+                kwargs['frequency']   = frequency
+                kwargs['load']        = precompile_load(dummy.load, integer=layout.integer).full
+                kwargs['maxscal']     = frequency
+                kwargs['minscal']     = frequency
+                kwargs['scroll']      = dummy.scroll
+                kwargs['sep1']        = dummy.sep1
+                kwargs['sep2']        = dummy.sep2
+                kwargs['temperature'] = precompile_temperature(dummy.temperature, integer=layout.integer).full
+                kwargs['thread']      = precompile_thread(dummy.thread).full
+
+                for key, value in kwargs.items():
+                    setattr(layout.length, key, len(value))
+
+                layout.length.minimum = len(layout.fstr.format(**kwargs))
+                layout.length.bar     = max(size.width - layout.length.minimum, 0)
+
+                if layout.length.bar:
+                    layout.length.bar  = layout.length.bar - 1 # 1 -> sep1
+                    layout.length.sep1 = 1
+
+            layouts = sorted(layouts, key=by_length, reverse=True)
+
+            for layout in layouts:
+                if layout.length.minimum <= size.width:
+                    self._layout = layout
+                    break
+
+
+    def _render(self, /, *, height, width):
+        by_field   = lambda cpu: getattr(cpu, focus)
+        cls        = self.__class__
+        default    = ANSI.default
+        empty      = ''
+        output     = []
+        mask_down  = 0b01
+        mask_empty = 0b00
+        mask_up    = 0b10
+        mask_both  = mask_down | mask_up
+        space      = ' '
+
+        arrows = {
+            mask_both:  cls._arrow_both,
+            mask_down:  cls._arrow_down,
+            mask_empty: space,
+            mask_up:    cls._arrow_up,
+        }
+
+        has_overflow_above = lambda y: y == 0 and index > 0
+        has_overflow_below = lambda y: y == len(samples) - 1 and index < len(cpus) - len(samples)
+
+        with self._instance_lock:
+            cpus = SNAPSHOT.cpus
+
+            self._calc_layout(cpus=len(cpus))
+
+            focus    = self._fields[0]
+            index    = self._scroll_index
+            layout   = self._layout
+            reverse  = self._reverse
+            samples  = cpus
+            viewport = self._viewport
+
+        if not layout:
+            return
+
+        if focus != self._default_focus:
+            samples = sorted(samples, key=by_field, reverse=reverse)
+
+        samples = samples[index:index + viewport]
+        header  = self._subrender_header(focus=focus, layout=layout, reverse=reverse)
+
+        output.append(header)
+
+        for y, cpu in enumerate(samples):
+            frequency   = precompile_frequency(cpu.frequency, compact=layout.compact, ghz=layout.ghz)
+            load        = precompile_load(cpu.load, integer=layout.integer)
+            maxscal     = precompile_frequency(cpu.maxscal, compact=layout.compact, ghz=layout.ghz)
+            minscal     = precompile_frequency(cpu.minscal, compact=layout.compact, ghz=layout.ghz)
+            temperature = precompile_temperature(cpu.temperature, integer=layout.integer)
+            bar         = self._subrender_bar(load=load, temperature=temperature, layout=layout)
+            thread      = precompile_thread(cpu.thread)
+
+            if layout.overflow:
+                bitmask = mask_empty
+
+                if has_overflow_above(y):
+                    bitmask = bitmask | mask_up
+
+                if has_overflow_below(y):
+                    bitmask = bitmask | mask_down
+
+                scroll = arrows[bitmask]
+            else:
+                scroll = empty
+
+            kwargs         = dict()
+            kwargs['bar']  = bar
+            kwargs['sep1'] = space * layout.length.sep1
+            kwargs['sep2'] = space if layout.overflow else empty
+
+            kwargs['frequency'] = frequency.align \
+                                + ANSI.dim.on     \
+                                + frequency.affix \
+                                + ANSI.dim.off
+
+            kwargs['load'] = load.color.fg.dark \
+                           + load.align         \
+                           + ANSI.dim.on        \
+                           + load.affix         \
+                           + ANSI.default.all
+
+            kwargs['maxscal'] = maxscal.align \
+                              + ANSI.dim.on   \
+                              + maxscal.affix \
+                              + ANSI.dim.off
+
+            kwargs['minscal'] = minscal.align \
+                              + ANSI.dim.on   \
+                              + minscal.affix \
+                              + ANSI.dim.off
+
+            kwargs['scroll'] = ANSI.cyan.fg.dark \
+                             + scroll            \
+                             + default.fg
+
+            kwargs['thread'] = ANSI.dim.on  \
+                             + thread.affix \
+                             + ANSI.dim.off \
+                             + thread.align
+
+            kwargs['temperature'] = temperature.color.fg.dark \
+                                  + temperature.align         \
+                                  + ANSI.dim.on               \
+                                  + temperature.affix         \
+                                  + ANSI.default.all
+
+            if focus != self._default_focus:
+                kwargs[focus] = ANSI.reverse.on + kwargs[focus] + ANSI.reverse.off
+
+            line = layout.fstr.format(**kwargs)
+
+            output.append(line)
+
+        return M.os.linesep.join(output)
+
+
+    @staticmethod
+    def _subrender_bar(*, layout, load, temperature):
+        empty  = ''
+        filler = '▮'
+        space  = ' '
+
+        blank_glyph_above = f'{ANSI.black.fg.light}╱{ANSI.default.fg}'
+        blank_glyph_below = f'{ANSI.black.fg.light}╲{ANSI.default.fg}'
+        blank_glyph_half  = f'{ANSI.black.fg.light}╳{ANSI.default.fg}'
+        blank_row_above   = [blank_glyph_above] * M.math.floor(layout.length.bar / 2)
+        blank_row_below   = [blank_glyph_below] * M.math.floor(layout.length.bar / 2)
+        blank_row_half    = [blank_glyph_half] if layout.length.bar % 2 else []
+        ret               = blank_row_above + blank_row_half + blank_row_below
+
+        if ret:
+            load_percentage        = M.math.ceil(load.value                    / 100 * layout.length.bar)
+            temperature_percentage = M.math.ceil(min(temperature.celsius, 100) / 100 * layout.length.bar)
+
+            for x in range(len(ret)):
+                cell = space
+
+                if load_percentage > x:
+                    cell = f'{load.color.fg.light}{filler}{ANSI.default.fg}'
+
+                if temperature_percentage > x:
+                    cell = f'{temperature.color.bg.dark}{cell}{ANSI.default.bg}'
+
+                if cell != space:
+                    ret[x] = cell
+
+        return empty.join(ret)
+
+
+    @classmethod
+    def _subrender_header(cls, /, *, focus, layout, reverse):
+        glyph_default_sort = '▼'
+        glyph_reverse_sort = '▲'
+        empty              = ''
+        focus              = str(focus)
+        kwargs             = dict()
+        messages_off       = ('stress test OFF', 'OFF')
+        messages_on        = ('stress test ON ({minutes}m {seconds}s)', '{minutes}m {seconds}s', 'ON')
+        messages_monitor   = ('monitor mode', 'monitor', 'm')
+        reverse            = bool(reverse)
+        select_message     = lambda m, l: max(( i for i in m if len(i) <= l), key=len, default=empty)
+        space              = ' '
+
+        for field, length in vars(layout.length).items():
+            value = space * length
+
+            if field == focus and field != cls._default_focus:
+                value = glyph_reverse_sort if reverse else glyph_default_sort
+                value = value.center(length, space)
+                value = f'{ANSI.reverse.on}{value}{ANSI.reverse.off}'
+            elif field in ('sep2', 'scroll'):
+                value = empty
+            elif field == 'bar':
+                length = length + layout.length.sep2 + layout.length.scroll
+
+                if not STRESS:
+                    message = select_message(messages_monitor, length)
+                    message = message.center(length)
+                    value   = f'{ANSI.default.fg}{message}'
+                elif EVENTS.stress.is_set():
+                    message = select_message(messages_on, length)
+                    seconds = eva.normalize_integer(STRESS_CHRONO.delta)
+                    minutes = seconds // 60
+                    seconds = seconds % 60
+                    message = message.format(minutes=minutes, seconds=seconds)
+                    message = message.center(length)
+                    value   = f'{ANSI.blink.on}{ANSI.red.fg.dark}{message}{ANSI.default.fg}{ANSI.blink.off}'
+                else:
+                    message = select_message(messages_off, length)
+                    message = message.center(length)
+                    value   = f'{ANSI.yellow.fg.dark}{message}{ANSI.default.fg}'
+
+            kwargs[field] = value
+
+        return layout.fstr.format(**kwargs)
+
+
+    def scroll_down(self, /):
+        with self._instance_lock:
+            self._scroll_index += 1
+
+        self.show()
+
+
+    def scroll_up(self, /):
+        with self._instance_lock:
+            self._scroll_index -= 1
+
+        self.show()
+
+
+    def select_left(self, /):
+        with self._instance_lock:
+            self._fields.rotate(1)
+
+        self.show()
+
+
+    def select_right(self, /):
+        with self._instance_lock:
+            self._fields.rotate(-1)
+
+        self.show()
+
+
+    def toggle_reverse(self, /):
+        with self._instance_lock:
+            self._reverse = not self._reverse
+
+        self.show()
+
+
+
+
+class Histogram(Window):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._cache       = []
+        self._fingerprint = None
+
+
+    def _render(self, /, *, height, width):
+        column      = []
+        empty       = ''
+        height      = eva.normalize_integer(height, minimum=self._minimum_height)
+        output      = []
+        snapshot    = SNAPSHOT
+        load        = precompile_load(snapshot.load)
+        temperature = precompile_temperature(snapshot.current)
+        space       = ' '
+        width       = eva.normalize_integer(width, minimum=self._minimum_width)
+        fingerprint = (height, width)
+
+        if 0 in fingerprint:
+            return
+
+        load_percentage        = M.math.ceil(load.value                    / 100 * height)
+        temperature_percentage = M.math.ceil(min(temperature.celsius, 100) / 100 * height)
+
+        blank_glyph_above  = f'{ANSI.black.fg.light}╱{ANSI.default.fg}'
+        blank_glyph_below  = f'{ANSI.black.fg.light}╲{ANSI.default.fg}'
+        blank_glyph_half   = f'{ANSI.black.fg.light}╳{ANSI.default.fg}'
+        blank_column_above = [blank_glyph_above] * M.math.floor(height / 2)
+        blank_column_below = [blank_glyph_below] * M.math.floor(height / 2)
+        blank_column_half  = [blank_glyph_half] if height % 2 else []
+        blank_column       = blank_column_above + blank_column_half + blank_column_below
+
+        for i in range(height):
+            cell = space
+            y    = height - i
+
+            if load_percentage >= y:
+                cell = f'{load.color.fg.light}{GLYPHS.heavy.ns}{ANSI.default.fg}'
+
+            if temperature_percentage >= y:
+                cell = f'{temperature.color.bg.dark}{cell}{ANSI.default.bg}'
+
+            if cell == space:
+                cell = blank_column[i]
+
+            column.append(cell)
+
+        with self._instance_lock:
+            if self._fingerprint != fingerprint:
+                self._cache       = []
+                self._fingerprint = fingerprint
+
+                for y in range(height):
+                    cell = blank_column[y]
+                    row  = [cell] * width
+                    row  = M.collections.deque(row, maxlen=width)
+
+                    self._cache.append(row)
+
+            for y, row in enumerate(self._cache):
+                row.append(column[y])
+                output.append(empty.join(row))
+
+        return M.os.linesep.join(output)
+
+
+
+
+class Value(Window):
+    _common_font     = False
+    _common_label    = False
+    _Value_instances = M.weakref.WeakSet()
+    _Value_lock      = M.threading.RLock()
+
+
+    @Window.height.setter
+    def height(self, value, /):
+        with __class__._Value_lock:
+            Window.height.fset(self, value)
+
+            if self in __class__._Value_instances:
+                __class__._set_common_properties()
+
+
+    @Window.title.setter
+    def title(self, value, /):
+        with __class__._Value_lock:
+            Window.title.fset(self, value)
+
+            if self in __class__._Value_instances:
+                __class__._set_common_properties()
+
+
+    @Window.width.setter
+    def width(self, value, /):
+        with __class__._Value_lock:
+            Window.width.fset(self, value)
+
+            if self in __class__._Value_instances:
+                __class__._set_common_properties()
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        with __class__._Value_lock:
+            __class__._Value_instances.add(self)
+            __class__._set_common_properties()
+
+
+    def _render(self, /, *, height, width):
+        calc_ceil_padding  = lambda taken, total: max(M.math.ceil((total - taken) / 2), 0)
+        calc_floor_padding = lambda taken, total: max(M.math.floor((total - taken) / 2), 0)
+        cls                = self.__class__
+        empty              = ''
+        height             = eva.normalize_integer(height, minimum=self._minimum_height)
+        output             = []
+        space              = ' '
+        value              = getattr(SNAPSHOT, cls.__name__.lower(), False)
+        width              = eva.normalize_integer(width, minimum=self._minimum_width)
+
+        with __class__._Value_lock:
+            font  = __class__._common_font
+            label = __class__._common_label
+            title = self.title
+
+        if not font or value is False or not hasattr(cls, '_precompile'):
+            return
+        else:
+            precompiled = cls._precompile(value)
+
+        for y in range(font.height):
+            number = empty.join( font.glyphs.get(char, font.fallback)[y] for char in precompiled.align )
+            affix  = empty.join( font.glyphs.get(char, font.fallback)[y] for char in precompiled.affix )
+            line   = f'{precompiled.color.fg.dark}{number}{ANSI.dim.on}{affix}{ANSI.default.all}'
+
+            output.append(line)
+
+        taken  = len(precompiled.full) * font.width
+        end    = space * calc_ceil_padding(taken, width)
+        start  = space * calc_floor_padding(taken, width)
+        output = [ f'{start}{line}{end}' for line in output ]
+
+        if label:
+            taken  = len(title)
+            end    = space * calc_ceil_padding(taken, width)
+            start  = space * calc_floor_padding(taken, width)
+            output = [f'{start}{ANSI.dim.on}{title}{ANSI.dim.off}{end}'] + output
+
+        taken  = len(output)
+        filler = [space * width]
+        end    = filler * (calc_floor_padding if BORDER else calc_ceil_padding)(taken, height)
+        start  = filler * (calc_ceil_padding if BORDER else calc_floor_padding)(taken, height)
+        output = start + output + end
+
+        return M.os.linesep.join(output)
+
+
+    @staticmethod
+    def _set_common_properties():
+        by_size   = lambda f: (f.height, f.width)
+        fonts     = sorted(vars(FONTS).values(), key=by_size, reverse=True)
+        max_value = max(len(precompile_load(None).full), len(precompile_temperature(None).full))
+
+        with __class__._Value_lock:
+            __class__._common_font  = False
+            __class__._common_label = False
+
+            instances = __class__._Value_instances
+
+            max_title  = max( len(instance.title)   for instance in instances )
+            min_height = min( instance.inner.height for instance in instances )
+            min_width  = min( instance.inner.width  for instance in instances )
+
+            for font in fonts:
+                if font.height <= min_height and font.width * max_value <= min_width:
+                    __class__._common_font = font
+
+                    if not BORDER and max_title <= min_width and min_height > font.height:
+                        __class__._common_label = all( instance.title for instance in instances )
+
+                    break
+
+
+
+
+class Current(Value):
+    _precompile = precompile_temperature
+
+class Load(Value):
+    _precompile = precompile_load
+
+class Maximum(Value):
+    _precompile = precompile_temperature
+
+    def _render(self, *args, **kwargs):
+        if BREATHER.expired:
+            return super()._render(*args, **kwargs)
+        else:
+            return self._render_noise(*args, **kwargs)
+
+class Minimum(Value):
+    _precompile = precompile_temperature
+
+class Smoothed(Value):
+    _precompile = precompile_temperature
+
+
+
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+# vim: et fenc=utf-8 nobomb sts=4 sw=4 ts=4
