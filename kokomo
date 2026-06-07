@@ -25,7 +25,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260606'
+VERSION             = '0.260607'
 WINDOWS             = None
 ZONES               = None
 
@@ -718,7 +718,7 @@ def signal_handler_window_resized(*args, **kwargs):
 
     try:
         with M.contextlib.suppress(AttributeError):
-            if not EVENTS.screen.is_set():
+            if SNAPSHOT and not EVENTS.screen.is_set():
                 EVENTS.screen.set()
     finally:
         M.signal.pthread_sigmask(M.signal.SIG_SETMASK, previous)
