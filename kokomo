@@ -18,6 +18,7 @@ GUIDES              = None
 INTERVAL            = eva.SECOND / 2
 LOCK                = M.threading.RLock()
 MARGIN_PERCENTAGE   = 1
+RESIZE_IN_PROGRESS  = False
 SNAPSHOT            = None
 STRESS              = False
 STRESS_CHRONO       = eva.Chrono()
@@ -25,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260607'
+VERSION             = '0.260609'
 WINDOWS             = None
 ZONES               = None
 
@@ -713,15 +714,15 @@ def signal_handler_graceful_exit(*args, **kwargs):
 
 
 def signal_handler_window_resized(*args, **kwargs):
-    mask     = {M.signal.SIGWINCH}
-    previous = M.signal.pthread_sigmask(M.signal.SIG_BLOCK, mask)
+    global RESIZE_IN_PROGRESS
 
-    try:
-        with M.contextlib.suppress(AttributeError):
-            if SNAPSHOT and not EVENTS.screen.is_set():
-                EVENTS.screen.set()
-    finally:
-        M.signal.pthread_sigmask(M.signal.SIG_SETMASK, previous)
+    if not RESIZE_IN_PROGRESS and (event := getattr(EVENTS, 'screen', False)) and SNAPSHOT:
+        try:
+            RESIZE_IN_PROGRESS = True
+
+            event.set()
+        finally:
+            RESIZE_IN_PROGRESS = False
 
 
 
