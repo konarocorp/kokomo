@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260611'
+VERSION             = '0.260613'
 WINDOWS             = None
 ZONES               = None
 
@@ -469,11 +469,11 @@ def main():
     M.signal.signal(M.signal.SIGTERM,  signal_handler_graceful_exit)
     M.signal.signal(M.signal.SIGWINCH, signal_handler_window_resized)
 
-    ANSI    = build_ansi()
-    EVENTS  = build_events()
-    FONTS   = build_fonts()
-    GLYPHS  = build_glyphs()
-    ZONES   = build_zones()
+    ANSI   = build_ansi()
+    EVENTS = build_events()
+    FONTS  = build_fonts()
+    GLYPHS = build_glyphs()
+    ZONES  = build_zones()
 
     GUIDES  = build_guides()
     WINDOWS = build_windows()
@@ -702,10 +702,10 @@ def signal_handler_graceful_exit(*args, **kwargs):
     force = False
 
     for name in ('bye', 'screen', 'stress'):
-        if (event := getattr(EVENTS, name, None)) is None:
-            force = True
-        else:
+        if event := getattr(EVENTS, name, False):
             event.set()
+        else:
+            force = True
 
     if force:
         M.sys.exit()
