@@ -82,7 +82,7 @@ The `LEFT` and `RIGHT` keys move the focus between the fields in the `CPUS` wind
 
 The `SPACE` key starts and stops the stress test (requires stress mode to be enabled).
 
-The `ESC` and `Q` keys can be used to exit the program.
+The `ESC` or `Q` keys can be used to exit the program.
 
 ## SCREENSHOTS
 
