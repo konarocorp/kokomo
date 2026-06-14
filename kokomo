@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260613'
+VERSION             = '0.260614'
 WINDOWS             = None
 ZONES               = None
 
@@ -1223,7 +1223,7 @@ class CPUs(Window):
         self._fields       = M.collections.deque(CPU_LAYOUT_FIELDS)
         self._fingerprint  = None
         self._layout       = False
-        self._reverse      = False
+        self._reverse      = True
         self._scroll_index = 0
         self._viewport     = 0
 
@@ -1479,8 +1479,8 @@ class CPUs(Window):
 
     @classmethod
     def _subrender_header(cls, /, *, focus, layout, reverse):
-        glyph_default_sort = '▼'
-        glyph_reverse_sort = '▲'
+        glyph_default_sort = '▲'
+        glyph_reverse_sort = '▼'
         empty              = ''
         focus              = str(focus)
         kwargs             = dict()
