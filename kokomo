@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260614'
+VERSION             = '0.260615'
 WINDOWS             = None
 ZONES               = None
 
@@ -465,6 +465,7 @@ def main():
     else:
         show_usage_and_exit(error=True)
 
+    M.signal.signal(M.signal.SIGHUP,   signal_handler_graceful_exit)
     M.signal.signal(M.signal.SIGINT,   signal_handler_graceful_exit)
     M.signal.signal(M.signal.SIGTERM,  signal_handler_graceful_exit)
     M.signal.signal(M.signal.SIGWINCH, signal_handler_window_resized)
