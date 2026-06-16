@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260615'
+VERSION             = '0.260616'
 WINDOWS             = None
 ZONES               = None
 
@@ -908,10 +908,10 @@ def target_stress():
             tasks   = []
 
             def append_task(cpu, /):
-                target  = target_stressor
+                ppid    = M.os.getpid()
                 stop    = context.Event()
-                args    = (cpu, stop)
-                process = context.Process(args=args, daemon=False, target=target)
+                args    = (cpu, ppid, stop)
+                process = context.Process(args=args, daemon=True, target=target_stressor)
                 task    = M.types.SimpleNamespace(cpu=cpu, process=process, stop=stop)
 
                 tasks.append(task)
@@ -957,15 +957,22 @@ def target_stress():
 
 
 
-def target_stressor(cpu, stop, /):
-    mask = {cpu}
-    pid  = 0
+def target_stressor(cpu, ppid, stop, /):
+    cpu    = int(cpu)
+    mask   = {cpu}
+    option = 1 # PR_SET_PDEATHSIG
+    pid    = 0
+    ppid   = int(ppid)
 
-    with M.contextlib.suppress(OSError):
-        M.os.sched_setaffinity(pid, mask)
+    M.ctypes.CDLL(None).prctl(option, M.signal.SIGTERM)
 
-        while not stop.is_set():
-            pass
+    if ppid == M.os.getppid():
+        with M.contextlib.suppress(OSError):
+            M.os.setsid()
+            M.os.sched_setaffinity(pid, mask)
+
+            while not stop.is_set():
+                pass
 
 
 
