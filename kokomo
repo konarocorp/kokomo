@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260616'
+VERSION             = '0.260621'
 WINDOWS             = None
 ZONES               = None
 
@@ -1751,7 +1751,7 @@ class Value(Window):
             __class__._common_font  = False
             __class__._common_label = False
 
-            instances = __class__._Value_instances
+            instances = tuple(__class__._Value_instances)
 
             max_title  = max( len(instance.title)   for instance in instances )
             min_height = min( instance.inner.height for instance in instances )
