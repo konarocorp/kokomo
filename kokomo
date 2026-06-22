@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260621'
+VERSION             = '0.260622'
 WINDOWS             = None
 ZONES               = None
 
@@ -1237,7 +1237,7 @@ class CPUs(Window):
 
 
     def _calc_layout(self, /, *, cpus):
-        by_length   = lambda layout: layout.length.minimum
+        by_length   = lambda layout: layout.minimum
         cls         = self.__class__
         arrow       = cls._arrow_both
         copy        = lambda sn: M.types.SimpleNamespace(**vars(sn))
@@ -1319,8 +1319,8 @@ class CPUs(Window):
                 for key, value in kwargs.items():
                     setattr(layout.length, key, len(value))
 
-                layout.length.minimum = len(layout.fstr.format(**kwargs))
-                layout.length.bar     = max(size.width - layout.length.minimum, 0)
+                layout.minimum    = len(layout.fstr.format(**kwargs))
+                layout.length.bar = max(size.width - layout.minimum, 0)
 
                 if layout.length.bar:
                     layout.length.bar  = layout.length.bar - 1 # 1 -> sep1
@@ -1329,7 +1329,7 @@ class CPUs(Window):
             layouts = sorted(layouts, key=by_length, reverse=True)
 
             for layout in layouts:
-                if layout.length.minimum <= size.width:
+                if layout.minimum <= size.width:
                     self._layout = layout
                     break
 
