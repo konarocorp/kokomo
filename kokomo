@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260622'
+VERSION             = '0.260623'
 WINDOWS             = None
 ZONES               = None
 
@@ -1339,12 +1339,14 @@ class CPUs(Window):
         cls        = self.__class__
         default    = ANSI.default
         empty      = ''
+        height     = eva.normalize_integer(height, minimum=self._minimum_height)
         output     = []
         mask_down  = 0b01
         mask_empty = 0b00
         mask_up    = 0b10
         mask_both  = mask_down | mask_up
         space      = ' '
+        width      = eva.normalize_integer(width, minimum=self._minimum_width)
 
         arrows = {
             mask_both:  cls._arrow_both,
@@ -1375,7 +1377,7 @@ class CPUs(Window):
             samples = sorted(samples, key=by_field, reverse=reverse)
 
         samples = samples[index:index + viewport]
-        header  = self._subrender_header(focus=focus, layout=layout, reverse=reverse)
+        header  = self._subrender_header(focus=focus, layout=layout, reverse=reverse, width=width)
 
         output.append(header)
 
@@ -1486,62 +1488,95 @@ class CPUs(Window):
 
 
     @classmethod
-    def _subrender_header(cls, /, *, focus, layout, reverse):
+    def _subrender_header(cls, /, *, focus, layout, reverse, width):
         glyph_default_sort = '▲'
         glyph_reverse_sort = '▼'
         empty              = ''
+        fields             = dict()
         focus              = str(focus)
-        kwargs             = dict()
+        messages_monitor   = ('monitor mode', 'monitor', 'm')
         messages_off       = ('stress test OFF', 'OFF')
         messages_on        = ('stress test ON ({minutes}m {seconds}s)', '{minutes}m {seconds}s', 'ON')
-        messages_monitor   = ('monitor mode', 'monitor', 'm')
+        minutes            = 0
         reverse            = bool(reverse)
+        seconds            = 0
         space              = ' '
+        regex_end          = M.re.compile(r'(' + M.re.escape(space) + r'*)$')
+        regex_start        = M.re.compile(r'^(' + M.re.escape(space) + r'*)')
+        width              = eva.normalize_integer(width, minimum=cls._minimum_width)
 
-        for field, length in vars(layout.length).items():
-            value = space * length
-
-            if field == focus and field != cls._default_focus:
+        for name, length in vars(layout.length).items():
+            if name == focus and name != cls._default_focus:
                 value = glyph_reverse_sort if reverse else glyph_default_sort
                 value = value.center(length, space)
-                value = f'{ANSI.reverse.on}{value}{ANSI.reverse.off}'
-            elif field in ('scroll', 'sep2'):
-                value = empty
-            elif field == 'bar':
-                length  = length + layout.length.sep2 + layout.length.scroll
-                minutes = empty
-                seconds = empty
+                value = ANSI.reverse.on + value + ANSI.reverse.off
+            else:
+                value = space * length
 
-                if not STRESS:
-                    end      = empty
-                    messages = messages_monitor
-                    start    = f'{ANSI.default.fg}'
-                elif EVENTS.stress.is_set():
-                    end      = f'{ANSI.default.fg}{ANSI.blink.off}'
-                    messages = messages_on
-                    start    = f'{ANSI.blink.on}{ANSI.red.fg.dark}'
+            fields[name] = value
 
-                    seconds = eva.normalize_integer(STRESS_CHRONO.delta)
-                    minutes = seconds // 60
-                    seconds = seconds % 60
-                else:
-                    end      = f'{ANSI.default.fg}'
-                    messages = messages_off
-                    start    = f'{ANSI.yellow.fg.dark}'
+        header = layout.fstr.format(**fields)
 
-                for message in messages:
-                    message = message.format(minutes=minutes, seconds=seconds)
+        if not header or header.isspace():
+            highlight    = empty
+            margin_end   = header
+            margin_start = empty
+        else:
+            highlight    = header.strip(space)
+            margin_end   = regex_end.search(header).group(1)
+            margin_start = regex_start.search(header).group(1)
 
-                    if len(message) <= length:
-                        break
-                else:
-                    message = empty
+            if margin_start:
+                highlight    = margin_start[-1] + highlight
+                margin_start = margin_start[0:-1]
 
-                value = start + message.center(length, space) + end
+            if margin_end:
+                highlight  = highlight + margin_end[0]
+                margin_end = margin_end[1:]
 
-            kwargs[field] = value
+        margin_end_length   = len(margin_end)
+        margin_start_length = len(margin_start)
 
-        return layout.fstr.format(**kwargs)
+        if not STRESS:
+            messages    = messages_monitor
+            style_end   = empty
+            style_start = ANSI.default.fg
+        elif EVENTS.stress.is_set():
+            messages    = messages_on
+            style_end   = ANSI.default.fg + ANSI.blink.off
+            style_start = ANSI.blink.on + ANSI.red.fg.dark
+
+            seconds = eva.normalize_integer(STRESS_CHRONO.delta)
+            minutes = seconds // 60
+            seconds = seconds % 60
+        else:
+            messages    = messages_off
+            style_end   = ANSI.default.fg
+            style_start = ANSI.yellow.fg.dark
+
+        for message in messages:
+            message = message.format(minutes=minutes, seconds=seconds)
+            length  = len(message)
+            padding = (width + length) / 2
+
+            if margin_end_length >= length and margin_end_length >= margin_start_length:
+                padding    = M.math.ceil(padding)
+                margin     = message.ljust(padding, space)
+                margin     = margin.rjust(margin_end_length, space)
+                margin     = margin[0:margin_end_length]
+                margin_end = style_start + margin + style_end
+
+                break
+            elif margin_start_length >= length and margin_start_length > margin_end_length:
+                padding      = M.math.floor(padding)
+                margin       = message.rjust(padding, space)
+                margin       = margin.ljust(margin_start_length, space)
+                margin       = margin[-margin_start_length:]
+                margin_start = style_start + margin + style_end
+
+                break
+
+        return margin_start + highlight + margin_end
 
 
     def scroll_down(self, /):
