@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260623'
+VERSION             = '0.260624'
 WINDOWS             = None
 ZONES               = None
 
@@ -551,10 +551,10 @@ def precompile_frequency(value, /, *, compact=False, ghz=False):
     minimum   = 0.0
     padding   = 3 if ghz else 4
     precision = 1 if ghz else 0
+    kwargs    = {'maximum': maximum, 'minimum': minimum, 'padding': True, 'precision': precision}
     space     = ' '
-    value     = maximum if value is None else float(value)
-    value     = value / divisor
-    string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+    value     = maximum if value is None else float(value) / divisor
+    string    = eva.normalize_float(value, **kwargs)
 
     if compact:
         affix = affix[0]
@@ -580,15 +580,17 @@ def precompile_load(value, /, *, integer=False):
     minimum   = 0.0
     padding   = 3 if integer else 4
     precision = 0 if integer else 1
+    kwargs    = {'maximum': maximum, 'minimum': minimum, 'padding': True, 'precision': precision}
     space     = ' '
     value     = maximum if value is None else float(value)
-    string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+    string    = eva.normalize_float(value, **kwargs)
     value     = float(string)
 
-    if value >= 100:
-        precision = 0
-        string    = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
-        value     = float(string)
+    if value >= 100 and precision:
+        kwargs['precision'] = 0
+
+        string = eva.normalize_float(value, **kwargs)
+        value  = float(string)
 
     ret         = M.types.SimpleNamespace()
     ret.affix   = affix
@@ -612,18 +614,27 @@ def precompile_temperature(value, /, *, integer=False):
     minimum   = TEMPERATURE_MINIMUM
     padding   = 3 if FAHRENHEIT or integer else 4
     precision = 0 if FAHRENHEIT or integer else 1
+    kwargs    = {'maximum': maximum, 'minimum': minimum, 'padding': True, 'precision': precision}
     space     = ' '
     value     = maximum if value is None else float(value)
 
-    if value >= 100:
-        precision = 0
-
-    string  = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
-    celsius = float(string)
-
     if FAHRENHEIT:
-        value  = (value * 1.8) + 32
-        string = eva.normalize_float(value, maximum=maximum, minimum=minimum, padding=True, precision=precision)
+        fahrenheit = (value * 1.8) + 32
+        string     = eva.normalize_float(fahrenheit, **kwargs)
+        value      = float(string)
+        celsius    = (value - 32) / 1.8
+        celsius    = eva.clamp(celsius, minimum, maximum)
+    else:
+        string = eva.normalize_float(value, **kwargs)
+        value  = float(string)
+
+        if value >= 100 and precision:
+            kwargs['precision'] = 0
+
+            string = eva.normalize_float(value, **kwargs)
+            value  = float(string)
+
+        celsius = value
 
     ret         = M.types.SimpleNamespace()
     ret.affix   = affix
@@ -633,7 +644,7 @@ def precompile_temperature(value, /, *, integer=False):
     ret.full    = fstr.format(affix=affix, align=ret.align)
     ret.compact = ret.full.strip(space)
     ret.string  = string
-    ret.value   = float(string)
+    ret.value   = value
 
     return ret
 
@@ -645,9 +656,9 @@ def precompile_thread(value, /):
     fstr      = '{affix}{align}'
     maximum   = CPU_HIGHEST_THREAD
     minimum   = 0
-    value     = maximum if value is None else eva.clamp(value, minimum, maximum)
     padding   = len(str(maximum))
     space     = ' '
+    value     = maximum if value is None else eva.clamp(value, minimum, maximum)
     string    = str(value)
 
     ret         = M.types.SimpleNamespace()
