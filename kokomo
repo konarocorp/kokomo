@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260624'
+VERSION             = '0.260625'
 WINDOWS             = None
 ZONES               = None
 
@@ -820,24 +820,36 @@ def target_mouse():
 
 def target_screen():
     try:
+        debounce    = eva.SECOND / 10
         fingerprint = None
+        recalculate = False
 
         while True:
             EVENTS.screen.wait()
-            EVENTS.screen.clear()
 
             if EVENTS.bye.is_set():
                 break
+
+            EVENTS.screen.clear()
 
             height = TERMINAL.height
             width  = TERMINAL.width
             size   = (height, width)
 
             if fingerprint != size:
-                fingerprint = size
+                recalculate = True
 
+            if recalculate:
                 TERMINAL.clear_screen()
+
+                if fingerprint:
+                    if EVENTS.bye.wait(debounce) or EVENTS.screen.is_set():
+                        continue
+
                 calc_positions_and_sizes(height=height, width=width)
+
+                fingerprint = size
+                recalculate = False
 
                 for guide in vars(GUIDES).values():
                     guide.show()
