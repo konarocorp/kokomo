@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260625'
+VERSION             = '0.260702'
 WINDOWS             = None
 ZONES               = None
 
@@ -327,12 +327,11 @@ def calc_guide_position(*, guides, index, length, margin):
 
 
 
-def calc_positions_and_sizes(*, height, width):
-    height   = eva.normalize_integer(height, minimum=0)
-    width    = eva.normalize_integer(width, minimum=0)
-    snapshot = SNAPSHOT
-    margin   = M.math.sqrt(height * width) / 100 * MARGIN_PERCENTAGE
-    margin   = eva.normalize_integer(margin, minimum=0)
+def calc_positions_and_sizes(*, height, snapshot, width):
+    height = eva.normalize_integer(height, minimum=0)
+    width  = eva.normalize_integer(width, minimum=0)
+    margin = M.math.sqrt(height * width) / 100 * MARGIN_PERCENTAGE
+    margin = eva.normalize_integer(margin, minimum=0)
 
     if height < 11: # 11 -> h1 + smoothed + h2 + load + h3 + minimum + h4 + current + h5 + maximum + h6
         margin = 0
@@ -821,7 +820,7 @@ def target_mouse():
 def target_screen():
     try:
         debounce    = eva.SECOND / 10
-        fingerprint = None
+        previous    = None
         recalculate = False
 
         while True:
@@ -832,23 +831,25 @@ def target_screen():
 
             EVENTS.screen.clear()
 
-            height = TERMINAL.height
-            width  = TERMINAL.width
-            size   = (height, width)
+            current        = M.types.SimpleNamespace()
+            snapshot       = SNAPSHOT
+            current.cpus   = len(snapshot.cpus)
+            current.height = TERMINAL.height
+            current.width  = TERMINAL.width
 
-            if fingerprint != size:
+            if previous != current:
                 recalculate = True
 
             if recalculate:
                 TERMINAL.clear_screen()
 
-                if fingerprint:
+                if previous and previous.cpus == current.cpus:
                     if EVENTS.bye.wait(debounce) or EVENTS.screen.is_set():
                         continue
 
-                calc_positions_and_sizes(height=height, width=width)
+                calc_positions_and_sizes(height=current.height, snapshot=snapshot, width=current.width)
 
-                fingerprint = size
+                previous    = current
                 recalculate = False
 
                 for guide in vars(GUIDES).values():
