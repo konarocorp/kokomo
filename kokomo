@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260702'
+VERSION             = '0.260728'
 WINDOWS             = None
 ZONES               = None
 
@@ -327,127 +327,128 @@ def calc_guide_position(*, guides, index, length, margin):
 
 
 
-def calc_positions_and_sizes(*, height, snapshot, width):
+def calc_positions_and_sizes(*, cpus, height, width):
+    cpus   = eva.normalize_integer(cpus, minimum=1)
     height = eva.normalize_integer(height, minimum=0)
     width  = eva.normalize_integer(width, minimum=0)
     margin = M.math.sqrt(height * width) / 100 * MARGIN_PERCENTAGE
     margin = eva.normalize_integer(margin, minimum=0)
 
-    if height < 11: # 11 -> h1 + smoothed + h2 + load + h3 + minimum + h4 + current + h5 + maximum + h6
+    if height < 11: # 11 -> gh1 + wsmoothed + gh2 + wload + gh3 + wminimum + gh4 + wcurrent + gh5 + wmaximum + gh6
         margin = 0
 
-    h0 = GUIDES.h0
-    h1 = GUIDES.h1
-    h2 = GUIDES.h2
-    h3 = GUIDES.h3
-    h4 = GUIDES.h4
-    h5 = GUIDES.h5
-    h6 = GUIDES.h6
+    gh0 = GUIDES.h0
+    gh1 = GUIDES.h1
+    gh2 = GUIDES.h2
+    gh3 = GUIDES.h3
+    gh4 = GUIDES.h4
+    gh5 = GUIDES.h5
+    gh6 = GUIDES.h6
 
-    v1 = GUIDES.v1
-    v2 = GUIDES.v2
-    v3 = GUIDES.v3
+    gv1 = GUIDES.v1
+    gv2 = GUIDES.v2
+    gv3 = GUIDES.v3
 
-    cpus      = WINDOWS.cpus
-    current   = WINDOWS.current
-    histogram = WINDOWS.histogram
-    load      = WINDOWS.load
-    maximum   = WINDOWS.maximum
-    minimum   = WINDOWS.minimum
-    smoothed  = WINDOWS.smoothed
+    wcpus      = WINDOWS.cpus
+    wcurrent   = WINDOWS.current
+    whistogram = WINDOWS.histogram
+    wload      = WINDOWS.load
+    wmaximum   = WINDOWS.maximum
+    wminimum   = WINDOWS.minimum
+    wsmoothed  = WINDOWS.smoothed
 
-    v1.height = height
-    v1.width  = margin
-    v1.x      = 1
-    v1.y      = 1
+    gv1.height = height
+    gv1.width  = margin
+    gv1.x      = 1
+    gv1.y      = 1
 
-    v2.height = height
-    v2.width  = margin
-    v2.x      = calc_guide_position(index=2.333, length=width, margin=margin, guides=3)
-    v2.y      = 1
+    gv2.height = height
+    gv2.width  = margin
+    gv2.x      = calc_guide_position(index=2.333, length=width, margin=margin, guides=3)
+    gv2.y      = 1
 
-    v3.height = height
-    v3.width  = margin
-    v3.x      = calc_guide_position(index=3, length=width, margin=margin, guides=3)
-    v3.y      = 1
+    gv3.height = height
+    gv3.width  = margin
+    gv3.x      = calc_guide_position(index=3, length=width, margin=margin, guides=3)
+    gv3.y      = 1
 
-    h1.height = margin
-    h1.width  = width
-    h1.x      = 1
-    h1.y      = 1
+    gh1.height = margin
+    gh1.width  = width
+    gh1.x      = 1
+    gh1.y      = 1
 
-    h2.height = margin
-    h2.width  = (v3.x + v3.width) - v2.x
-    h2.x      = v2.x
-    h2.y      = calc_guide_position(index=2, length=height, margin=margin, guides=6)
+    gh2.height = margin
+    gh2.width  = (gv3.x + gv3.width) - gv2.x
+    gh2.x      = gv2.x
+    gh2.y      = calc_guide_position(index=2, length=height, margin=margin, guides=6)
 
-    h3.height = margin
-    h3.width  = h2.width
-    h3.x      = h2.x
-    h3.y      = calc_guide_position(index=3, length=height, margin=margin, guides=6)
+    gh3.height = margin
+    gh3.width  = gh2.width
+    gh3.x      = gh2.x
+    gh3.y      = calc_guide_position(index=3, length=height, margin=margin, guides=6)
 
-    h4.height = margin
-    h4.width  = h2.width
-    h4.x      = h2.x
-    h4.y      = calc_guide_position(index=4, length=height, margin=margin, guides=6)
+    gh4.height = margin
+    gh4.width  = gh2.width
+    gh4.x      = gh2.x
+    gh4.y      = calc_guide_position(index=4, length=height, margin=margin, guides=6)
 
-    h5.height = margin
-    h5.width  = h2.width
-    h5.x      = h2.x
-    h5.y      = calc_guide_position(index=5, length=height, margin=margin, guides=6)
+    gh5.height = margin
+    gh5.width  = gh2.width
+    gh5.x      = gh2.x
+    gh5.y      = calc_guide_position(index=5, length=height, margin=margin, guides=6)
 
-    h6.height = margin
-    h6.width  = width
-    h6.x      = 1
-    h6.y      = calc_guide_position(index=6, length=height, margin=margin, guides=6)
+    gh6.height = margin
+    gh6.width  = width
+    gh6.x      = 1
+    gh6.y      = calc_guide_position(index=6, length=height, margin=margin, guides=6)
 
-    h0.height   = margin
-    h0.width    = (v2.x + v2.width) - v1.x
-    h0.x        = 1
-    h0.y        = calc_guide_position(index=2, length=height, margin=margin, guides=3)
-    cpus.height = len(snapshot.cpus) + (3 if cpus.border else 1) # 3 -> border + header + border, 1 -> header
-    h0.y        = min(h0.y, cpus.height + h1.height + h1.y)
+    gh0.height   = margin
+    gh0.width    = (gv2.x + gv2.width) - gv1.x
+    gh0.x        = 1
+    gh0.y        = calc_guide_position(index=2, length=height, margin=margin, guides=3)
+    wcpus.height = cpus + (3 if wcpus.border else 1) # 3 -> border + header + border, 1 -> header
+    gh0.y        = min(gh0.y, wcpus.height + gh1.height + gh1.y)
 
     if margin:
-        v1.width += margin
-        v2.width += margin
-        v3.x     -= margin
-        v3.width += margin
+        gv1.width += margin
+        gv2.width += margin
+        gv3.x     -= margin
+        gv3.width += margin
 
-    cpus.height = h0.y - h1.y - h1.height
-    cpus.width  = v2.x - v1.x - v1.width
-    cpus.x      = v1.x + v1.width
-    cpus.y      = h1.y + h1.height
+    wcpus.height = gh0.y - gh1.y - gh1.height
+    wcpus.width  = gv2.x - gv1.x - gv1.width
+    wcpus.x      = gv1.x + gv1.width
+    wcpus.y      = gh1.y + gh1.height
 
-    histogram.height = h6.y - h0.y - h0.height
-    histogram.width  = cpus.width
-    histogram.x      = cpus.x
-    histogram.y      = h0.y + h0.height
+    whistogram.height = gh6.y - gh0.y - gh0.height
+    whistogram.width  = wcpus.width
+    whistogram.x      = wcpus.x
+    whistogram.y      = gh0.y + gh0.height
 
-    smoothed.height = h2.y - h1.y - h1.height
-    smoothed.width  = v3.x - v2.x - v2.width
-    smoothed.x      = v2.x + v2.width
-    smoothed.y      = h1.y + h1.height
+    wsmoothed.height = gh2.y - gh1.y - gh1.height
+    wsmoothed.width  = gv3.x - gv2.x - gv2.width
+    wsmoothed.x      = gv2.x + gv2.width
+    wsmoothed.y      = gh1.y + gh1.height
 
-    load.height = h3.y - h2.y - h2.height
-    load.width  = smoothed.width
-    load.x      = smoothed.x
-    load.y      = h2.y + h2.height
+    wload.height = gh3.y - gh2.y - gh2.height
+    wload.width  = wsmoothed.width
+    wload.x      = wsmoothed.x
+    wload.y      = gh2.y + gh2.height
 
-    minimum.height = h4.y - h3.y - h3.height
-    minimum.width  = smoothed.width
-    minimum.x      = smoothed.x
-    minimum.y      = h3.y + h3.height
+    wminimum.height = gh4.y - gh3.y - gh3.height
+    wminimum.width  = wsmoothed.width
+    wminimum.x      = wsmoothed.x
+    wminimum.y      = gh3.y + gh3.height
 
-    current.height = h5.y - h4.y - h4.height
-    current.width  = smoothed.width
-    current.x      = smoothed.x
-    current.y      = h4.y + h4.height
+    wcurrent.height = gh5.y - gh4.y - gh4.height
+    wcurrent.width  = wsmoothed.width
+    wcurrent.x      = wsmoothed.x
+    wcurrent.y      = gh4.y + gh4.height
 
-    maximum.height = h6.y - h5.y - h5.height
-    maximum.width  = smoothed.width
-    maximum.x      = smoothed.x
-    maximum.y      = h5.y + h5.height
+    wmaximum.height = gh6.y - gh5.y - gh5.height
+    wmaximum.width  = wsmoothed.width
+    wmaximum.x      = wsmoothed.x
+    wmaximum.y      = gh5.y + gh5.height
 
 
 
@@ -847,7 +848,7 @@ def target_screen():
                     if EVENTS.bye.wait(debounce) or EVENTS.screen.is_set():
                         continue
 
-                calc_positions_and_sizes(height=current.height, snapshot=snapshot, width=current.width)
+                calc_positions_and_sizes(cpus=current.cpus, height=current.height, width=current.width)
 
                 previous    = current
                 recalculate = False
