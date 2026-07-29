@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260728'
+VERSION             = '0.260729'
 WINDOWS             = None
 ZONES               = None
 
@@ -729,12 +729,9 @@ def signal_handler_window_resized(*args, **kwargs):
     global RESIZE_IN_PROGRESS
 
     if not RESIZE_IN_PROGRESS and (event := getattr(EVENTS, 'screen', False)) and SNAPSHOT:
-        try:
-            RESIZE_IN_PROGRESS = True
+        RESIZE_IN_PROGRESS = True
 
-            event.set()
-        finally:
-            RESIZE_IN_PROGRESS = False
+        event.set()
 
 
 
@@ -820,6 +817,8 @@ def target_mouse():
 
 def target_screen():
     try:
+        global RESIZE_IN_PROGRESS
+
         debounce    = eva.SECOND / 10
         previous    = None
         recalculate = False
@@ -831,6 +830,8 @@ def target_screen():
                 break
 
             EVENTS.screen.clear()
+
+            RESIZE_IN_PROGRESS = False
 
             current        = M.types.SimpleNamespace()
             snapshot       = SNAPSHOT
@@ -845,7 +846,7 @@ def target_screen():
                 TERMINAL.clear_screen()
 
                 if previous and previous.cpus == current.cpus:
-                    if EVENTS.bye.wait(debounce) or EVENTS.screen.is_set():
+                    if EVENTS.bye.wait(debounce) or RESIZE_IN_PROGRESS:
                         continue
 
                 calc_positions_and_sizes(cpus=current.cpus, height=current.height, width=current.width)
