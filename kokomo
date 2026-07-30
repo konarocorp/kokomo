@@ -9,7 +9,6 @@ ANSI                = None
 BORDER              = True
 BREATHER            = eva.Chrono(timeout=eva.SECOND * 10)
 CPU_HIGHEST_THREAD  = max(eva.CPU.get_cpus(possible=True))
-CPU_LAYOUT_FIELDS   = ('thread', 'temperature', 'load', 'minscal', 'frequency', 'maxscal')
 EVENTS              = None
 FAHRENHEIT          = False
 FONTS               = None
@@ -26,7 +25,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260729'
+VERSION             = '0.260730'
 WINDOWS             = None
 ZONES               = None
 
@@ -833,8 +832,9 @@ def target_screen():
 
             RESIZE_IN_PROGRESS = False
 
+            snapshot = SNAPSHOT
+
             current        = M.types.SimpleNamespace()
-            snapshot       = SNAPSHOT
             current.cpus   = len(snapshot.cpus)
             current.height = TERMINAL.height
             current.width  = TERMINAL.width
@@ -858,6 +858,8 @@ def target_screen():
                     guide.show()
 
             for window in vars(WINDOWS).values():
+                window.snapshot = snapshot
+
                 window.show()
     finally:
         EVENTS.bye.set()
@@ -871,6 +873,7 @@ def target_snapshot():
 
         by_thread = lambda cpu: cpu.thread
         chrono    = eva.Chrono(timeout=INTERVAL)
+        fields    = tuple( field.name for field in M.dataclasses.fields(CPUSnapshot) )
         maximum   = TEMPERATURE_MINIMUM
         minimum   = TEMPERATURE_MAXIMUM
         samples   = M.collections.deque()
@@ -878,44 +881,36 @@ def target_snapshot():
         while True:
             chrono.reset()
 
-            cpus        = []
-            load        = eva.CPU.load
-            temperature = eva.CPU.temperature
-            maximum     = max(temperature, maximum) if BREATHER.expired else temperature
-            minimum     = min(temperature, minimum)
-
-            sample             = M.types.SimpleNamespace()
-            sample.chrono      = eva.Chrono(timeout=TIMEOUT_SMOOTHED)
-            sample.temperature = temperature
-
             while samples:
                 if samples[0].chrono.expired:
                     samples.popleft()
                 else:
                     break
 
-            samples.append(sample)
+            cpus        = []
+            load        = eva.CPU.load
+            temperature = eva.CPU.temperature
+            maximum     = max(temperature, maximum) if BREATHER.expired else temperature
+            minimum     = min(temperature, minimum)
+            sample      = M.types.SimpleNamespace(chrono=eva.Chrono(timeout=TIMEOUT_SMOOTHED), temperature=temperature)
 
             for cpu in eva.CPU.get_cpus(auto=True, online=True):
-                sample = M.types.SimpleNamespace()
+                kwargs = { field: getattr(cpu, field) for field in fields }
+                cpu    = CPUSnapshot(**kwargs)
 
-                for name in CPU_LAYOUT_FIELDS:
-                    value = getattr(cpu, name)
-
-                    setattr(sample, name, value)
-
-                cpus.append(sample)
+                cpus.append(cpu)
 
             cpus.sort(key=by_thread)
+            samples.append(sample)
 
-            snapshot          = M.types.SimpleNamespace()
-            snapshot.cpus     = tuple(cpus)
-            snapshot.load     = load
-            snapshot.maximum  = maximum
-            snapshot.minimum  = minimum
-            snapshot.current  = temperature
-            snapshot.smoothed = M.statistics.mean( sample.temperature for sample in samples )
-            SNAPSHOT          = snapshot
+            kwargs             = {}
+            kwargs['cpus']     = tuple(cpus)
+            kwargs['load']     = load
+            kwargs['maximum']  = maximum
+            kwargs['minimum']  = minimum
+            kwargs['current']  = temperature
+            kwargs['smoothed'] = M.statistics.mean( sample.temperature for sample in samples )
+            SNAPSHOT           = ProcessorSnapshot(**kwargs)
 
             EVENTS.screen.set()
 
@@ -1013,6 +1008,32 @@ def toggle_stress():
                 EVENTS.stress.set()
 
         WINDOWS.cpus.show()
+
+
+
+
+@M.dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
+class CPUSnapshot:
+    # Fields are deliberately not sorted alphabetically. They reflect the column
+    # layout of the CPUs window.
+    thread:      int
+    temperature: float
+    load:        float
+    minscal:     float
+    frequency:   float
+    maxscal:     float
+
+
+
+
+@M.dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
+class ProcessorSnapshot:
+    cpus:     tuple[CPUSnapshot, ...]
+    current:  float
+    load:     float
+    maximum:  float
+    minimum:  float
+    smoothed: float
 
 
 
@@ -1145,7 +1166,7 @@ class Box:
             box.y      = self.y
             inner      = self.inner
 
-        if inner.height and inner.width:
+        if inner.height and inner.width and getattr(self, 'snapshot', True):
             if isinstance(render := self._render(height=inner.height, width=inner.width), str):
                 output = render.split(M.os.linesep)
 
@@ -1213,6 +1234,10 @@ class Window(Box):
         return self._border
 
 
+    def _fget_snapshot(self, /):
+        return self._snapshot
+
+
     def _fget_title(self, /):
         return self._title
 
@@ -1224,6 +1249,14 @@ class Window(Box):
             self._border = value
 
 
+    def _fset_snapshot(self, value, /):
+        if not isinstance(value, ProcessorSnapshot):
+            raise TypeError
+
+        with self._instance_lock:
+            self._snapshot = value
+
+
     def _fset_title(self, value, /):
         value = eva.normalize_text(value, full=True)
 
@@ -1231,15 +1264,17 @@ class Window(Box):
             self._title = value
 
 
-    border = property(fget=_fget_border, fset=_fset_border)
-    title  = property(fget=_fget_title,  fset=_fset_title)
+    border   = property(fget=_fget_border,   fset=_fset_border)
+    snapshot = property(fget=_fget_snapshot, fset=_fset_snapshot)
+    title    = property(fget=_fget_title,    fset=_fset_title)
 
 
     def __init__(self, *args, border=False, title=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.border = border
-        self.title  = '' if title is None else title
+        self._snapshot = None
+        self.border    = border
+        self.title     = '' if title is None else title
 
 
 
@@ -1254,7 +1289,7 @@ class CPUs(Window):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._fields       = M.collections.deque(CPU_LAYOUT_FIELDS)
+        self._fields       = M.collections.deque( field.name for field in M.dataclasses.fields(CPUSnapshot) )
         self._fingerprint  = None
         self._layout       = False
         self._reverse      = True
@@ -1371,6 +1406,7 @@ class CPUs(Window):
         mask_empty = 0b00
         mask_up    = 0b10
         mask_both  = mask_down | mask_up
+        snapshot   = self.snapshot
         space      = ' '
         width      = eva.normalize_integer(width, minimum=self._minimum_width)
 
@@ -1385,7 +1421,7 @@ class CPUs(Window):
         has_overflow_below = lambda y: y == len(samples) - 1 and index < len(cpus) - len(samples)
 
         with self._instance_lock:
-            cpus = SNAPSHOT.cpus
+            cpus = snapshot.cpus
 
             self._calc_layout(cpus=len(cpus))
 
@@ -1655,7 +1691,7 @@ class Histogram(Window):
         empty       = ''
         height      = eva.normalize_integer(height, minimum=self._minimum_height)
         output      = []
-        snapshot    = SNAPSHOT
+        snapshot    = self.snapshot
         load        = precompile_load(snapshot.load)
         temperature = precompile_temperature(snapshot.current)
         space       = ' '
@@ -1761,8 +1797,9 @@ class Value(Window):
         empty              = ''
         height             = eva.normalize_integer(height, minimum=self._minimum_height)
         output             = []
+        snapshot           = self.snapshot
         space              = ' '
-        value              = getattr(SNAPSHOT, cls.__name__.lower(), False)
+        value              = getattr(snapshot, cls.__name__.lower(), False)
         width              = eva.normalize_integer(width, minimum=self._minimum_width)
 
         with __class__._Value_lock:
