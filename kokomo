@@ -25,7 +25,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260730'
+VERSION             = '0.260801'
 WINDOWS             = None
 ZONES               = None
 
@@ -34,69 +34,68 @@ ZONES               = None
 
 @M.functools.cache
 def build_ansi():
-    sn  = M.types.SimpleNamespace
-    ret = sn()
+    ret = eva.N()
 
-    ret.blink     = sn()
+    ret.blink     = eva.N()
     ret.blink.off = '\x1B[25m'
     ret.blink.on  = '\x1B[5m'
 
-    ret.dim     = sn()
+    ret.dim     = eva.N()
     ret.dim.off = '\x1B[22m'
     ret.dim.on  = '\x1B[2m'
 
-    ret.reverse     = sn()
+    ret.reverse     = eva.N()
     ret.reverse.off = '\x1B[27m'
     ret.reverse.on  = '\x1B[7m'
 
-    ret.default     = sn()
+    ret.default     = eva.N()
     ret.default.all = '\x1B[0m'
     ret.default.bg  = '\x1B[49m'
     ret.default.fg  = '\x1B[39m'
 
-    ret.black          = sn(bg=sn(), fg=sn())
+    ret.black          = eva.N(bg=eva.N(), fg=eva.N())
     ret.black.bg.dark  = '\x1B[40m'
     ret.black.bg.light = '\x1B[100m'
     ret.black.fg.dark  = '\x1B[30m'
     ret.black.fg.light = '\x1B[90m'
 
-    ret.blue          = sn(bg=sn(), fg=sn())
+    ret.blue          = eva.N(bg=eva.N(), fg=eva.N())
     ret.blue.bg.dark  = '\x1B[44m'
     ret.blue.bg.light = '\x1B[104m'
     ret.blue.fg.dark  = '\x1B[34m'
     ret.blue.fg.light = '\x1B[94m'
 
-    ret.cyan          = sn(bg=sn(), fg=sn())
+    ret.cyan          = eva.N(bg=eva.N(), fg=eva.N())
     ret.cyan.bg.dark  = '\x1B[46m'
     ret.cyan.bg.light = '\x1B[106m'
     ret.cyan.fg.dark  = '\x1B[36m'
     ret.cyan.fg.light = '\x1B[96m'
 
-    ret.green          = sn(bg=sn(), fg=sn())
+    ret.green          = eva.N(bg=eva.N(), fg=eva.N())
     ret.green.bg.dark  = '\x1B[42m'
     ret.green.bg.light = '\x1B[102m'
     ret.green.fg.dark  = '\x1B[32m'
     ret.green.fg.light = '\x1B[92m'
 
-    ret.magenta          = sn(bg=sn(), fg=sn())
+    ret.magenta          = eva.N(bg=eva.N(), fg=eva.N())
     ret.magenta.bg.dark  = '\x1B[45m'
     ret.magenta.bg.light = '\x1B[105m'
     ret.magenta.fg.dark  = '\x1B[35m'
     ret.magenta.fg.light = '\x1B[95m'
 
-    ret.red          = sn(bg=sn(), fg=sn())
+    ret.red          = eva.N(bg=eva.N(), fg=eva.N())
     ret.red.bg.dark  = '\x1B[41m'
     ret.red.bg.light = '\x1B[101m'
     ret.red.fg.dark  = '\x1B[31m'
     ret.red.fg.light = '\x1B[91m'
 
-    ret.white          = sn(bg=sn(), fg=sn())
+    ret.white          = eva.N(bg=eva.N(), fg=eva.N())
     ret.white.bg.dark  = '\x1B[47m'
     ret.white.bg.light = '\x1B[107m'
     ret.white.fg.dark  = '\x1B[37m'
     ret.white.fg.light = '\x1B[97m'
 
-    ret.yellow          = sn(bg=sn(), fg=sn())
+    ret.yellow          = eva.N(bg=eva.N(), fg=eva.N())
     ret.yellow.bg.dark  = '\x1B[43m'
     ret.yellow.bg.light = '\x1B[103m'
     ret.yellow.fg.dark  = '\x1B[33m'
@@ -109,7 +108,7 @@ def build_ansi():
 
 @M.functools.cache
 def build_events():
-    ret        = M.types.SimpleNamespace()
+    ret        = eva.N()
     ret.bye    = M.threading.Event()
     ret.screen = M.threading.Event()
     ret.stress = M.threading.Event()
@@ -122,7 +121,7 @@ def build_events():
 @M.functools.cache
 def build_fonts():
     fallback = '?'
-    ret      = M.types.SimpleNamespace()
+    ret      = eva.N()
 
     glyphs      = build_glyphs().heavy
     medium      = {}
@@ -194,8 +193,8 @@ def build_fonts():
                    f'{glyphs.none}{glyphs.none}{glyphs.none}']
 
     small      = { key: [key] for key in medium.keys() }
-    ret.medium = M.types.SimpleNamespace(glyphs=medium)
-    ret.small  = M.types.SimpleNamespace(glyphs=small)
+    ret.medium = eva.N(glyphs=medium)
+    ret.small  = eva.N(glyphs=small)
 
     for properties in vars(ret).values():
         properties.fallback = list(properties.glyphs[fallback])
@@ -209,10 +208,9 @@ def build_fonts():
 
 @M.functools.cache
 def build_glyphs():
-    sn  = M.types.SimpleNamespace
-    ret = sn()
+    ret = eva.N()
 
-    ret.arc      = sn()
+    ret.arc      = eva.N()
     ret.arc.all  = '┼'
     ret.arc.none = ' '
     ret.arc.e    = '╶'
@@ -230,7 +228,7 @@ def build_glyphs():
     ret.arc.new  = '┴'
     ret.arc.nsw  = '┤'
 
-    ret.heavy      = sn()
+    ret.heavy      = eva.N()
     ret.heavy.all  = '╋'
     ret.heavy.none = ' '
     ret.heavy.e    = '╺'
@@ -248,7 +246,7 @@ def build_glyphs():
     ret.heavy.new  = '┻'
     ret.heavy.nsw  = '┫'
 
-    ret.light    = sn(**vars(ret.arc))
+    ret.light    = eva.N(**vars(ret.arc))
     ret.light.es = '┌'
     ret.light.ne = '└'
     ret.light.nw = '┘'
@@ -261,7 +259,7 @@ def build_glyphs():
 
 @M.functools.cache
 def build_guides():
-    ret    = M.types.SimpleNamespace()
+    ret    = eva.N()
     ret.h0 = Guide()
     ret.h1 = Guide()
     ret.h2 = Guide()
@@ -280,7 +278,7 @@ def build_guides():
 
 @M.functools.cache
 def build_windows():
-    ret           = M.types.SimpleNamespace()
+    ret           = eva.N()
     ret.cpus      = CPUs(border=BORDER,      title='CPUS')
     ret.current   = Current(border=BORDER,   title='CURRENT')
     ret.histogram = Histogram(border=BORDER, title='HISTOGRAM')
@@ -297,12 +295,12 @@ def build_windows():
 @M.functools.cache
 def build_zones():
     ansi        = build_ansi()
-    ret         = M.types.SimpleNamespace()
-    ret.highest = M.types.SimpleNamespace(color=ansi.magenta, load=85.0, temperature=80.0)
-    ret.high    = M.types.SimpleNamespace(color=ansi.red,     load=50.0, temperature=65.0)
-    ret.medium  = M.types.SimpleNamespace(color=ansi.yellow,  load=25.0, temperature=50.0)
-    ret.low     = M.types.SimpleNamespace(color=ansi.green,   load=10.0, temperature=30.0)
-    ret.lowest  = M.types.SimpleNamespace(color=ansi.blue,    load=0.0,  temperature=0.0)
+    ret         = eva.N()
+    ret.highest = eva.N(color=ansi.magenta, load=85.0, temperature=80.0)
+    ret.high    = eva.N(color=ansi.red,     load=50.0, temperature=65.0)
+    ret.medium  = eva.N(color=ansi.yellow,  load=25.0, temperature=50.0)
+    ret.low     = eva.N(color=ansi.green,   load=10.0, temperature=30.0)
+    ret.lowest  = eva.N(color=ansi.blue,    load=0.0,  temperature=0.0)
 
     return ret
 
@@ -528,7 +526,7 @@ def parse_arguments():
         if any( argument > 1 for argument in vars(arguments).values() ):
             argparse_error_handler()
 
-        ret            = M.types.SimpleNamespace()
+        ret            = eva.N()
         ret.fahrenheit = bool(arguments.fahrenheit)
         ret.help       = bool(arguments.help)
         ret.stress     = bool(arguments.stress)
@@ -558,7 +556,7 @@ def precompile_frequency(value, /, *, compact=False, ghz=False):
     if compact:
         affix = affix[0]
 
-    ret         = M.types.SimpleNamespace()
+    ret         = eva.N()
     ret.affix   = affix
     ret.align   = string.rjust(padding, space)
     ret.full    = fstr.format(affix=affix, align=ret.align)
@@ -591,7 +589,7 @@ def precompile_load(value, /, *, integer=False):
         string = eva.normalize_float(value, **kwargs)
         value  = float(string)
 
-    ret         = M.types.SimpleNamespace()
+    ret         = eva.N()
     ret.affix   = affix
     ret.align   = string.rjust(padding, space)
     ret.color   = select_color_by_load(value)
@@ -635,7 +633,7 @@ def precompile_temperature(value, /, *, integer=False):
 
         celsius = value
 
-    ret         = M.types.SimpleNamespace()
+    ret         = eva.N()
     ret.affix   = affix
     ret.align   = string.rjust(padding, space)
     ret.celsius = celsius
@@ -660,7 +658,7 @@ def precompile_thread(value, /):
     value     = maximum if value is None else eva.clamp(value, minimum, maximum)
     string    = str(value)
 
-    ret         = M.types.SimpleNamespace()
+    ret         = eva.N()
     ret.affix   = affix
     ret.align   = string.ljust(padding, space)
     ret.full    = fstr.format(affix=affix, align=ret.align)
@@ -834,7 +832,7 @@ def target_screen():
 
             snapshot = SNAPSHOT
 
-            current        = M.types.SimpleNamespace()
+            current        = eva.N()
             current.cpus   = len(snapshot.cpus)
             current.height = TERMINAL.height
             current.width  = TERMINAL.width
@@ -892,7 +890,7 @@ def target_snapshot():
             temperature = eva.CPU.temperature
             maximum     = max(temperature, maximum) if BREATHER.expired else temperature
             minimum     = min(temperature, minimum)
-            sample      = M.types.SimpleNamespace(chrono=eva.Chrono(timeout=TIMEOUT_SMOOTHED), temperature=temperature)
+            sample      = eva.N(chrono=eva.Chrono(timeout=TIMEOUT_SMOOTHED), temperature=temperature)
 
             for cpu in eva.CPU.get_cpus(auto=True, online=True):
                 kwargs = { field: getattr(cpu, field) for field in fields }
@@ -933,7 +931,7 @@ def target_stress():
                 stop    = context.Event()
                 args    = (cpu, ppid, stop)
                 process = context.Process(args=args, daemon=True, target=target_stressor)
-                task    = M.types.SimpleNamespace(cpu=cpu, process=process, stop=stop)
+                task    = eva.N(cpu=cpu, process=process, stop=stop)
 
                 tasks.append(task)
                 process.start()
@@ -1060,7 +1058,7 @@ class Box:
             height = max(height - 2, 0) # 2 -> border + border
             width  = max(width  - 4, 0) # 4 -> border + space + space + border
 
-        return M.types.SimpleNamespace(height=height, width=width)
+        return eva.N(height=height, width=width)
 
 
     def _fget_width(self, /):
@@ -1157,7 +1155,7 @@ class Box:
         space         = ' '
 
         with self._instance_lock:
-            box        = M.types.SimpleNamespace()
+            box        = eva.N()
             box.border = getattr(self, 'border', False)
             box.height = self.height
             box.title  = getattr(self, 'title', empty)
@@ -1301,10 +1299,10 @@ class CPUs(Window):
         by_length   = lambda layout: layout.minimum
         cls         = self.__class__
         arrow       = cls._arrow_both
-        copy        = lambda sn: M.types.SimpleNamespace(**vars(sn))
+        copy        = lambda sn: eva.N(**vars(sn))
         cpus        = eva.normalize_integer(cpus, minimum=1)
         empty       = ''
-        fingerprint = M.types.SimpleNamespace()
+        fingerprint = eva.N()
         fstr        = '{thread} {temperature} {load} {minscal} {frequency} {maxscal}{sep1}{bar}{sep2}{scroll}'
         space       = ' '
 
@@ -1329,7 +1327,7 @@ class CPUs(Window):
             if not viewport:
                 return
 
-            dummy             = M.types.SimpleNamespace()
+            dummy             = eva.N()
             dummy.bar         = empty
             dummy.frequency   = None
             dummy.load        = None
@@ -1340,7 +1338,7 @@ class CPUs(Window):
             dummy.thread      = None
 
             # CPU0 99.9°C 99.9% 1234MHz 1234MHz 1234MHz
-            full          = M.types.SimpleNamespace()
+            full          = eva.N()
             full.compact  = False
             full.fstr     = fstr
             full.ghz      = False
@@ -1363,7 +1361,7 @@ class CPUs(Window):
 
             for layout in layouts:
                 frequency     = precompile_frequency(dummy.frequency, ghz=layout.ghz, compact=layout.compact).full
-                layout.length = M.types.SimpleNamespace()
+                layout.length = eva.N()
 
                 kwargs                = dict()
                 kwargs['bar']         = dummy.bar
@@ -1608,7 +1606,7 @@ class CPUs(Window):
             style_end   = ANSI.default.fg + ANSI.blink.off
             style_start = ANSI.blink.on + ANSI.red.fg.dark
 
-            seconds = eva.normalize_integer(STRESS_CHRONO.delta)
+            seconds = eva.normalize_integer(STRESS_CHRONO.elapsed)
             minutes = seconds // 60
             seconds = seconds % 60
         else:
