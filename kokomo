@@ -14,7 +14,8 @@ FAHRENHEIT          = False
 FONTS               = None
 GLYPHS              = None
 GUIDES              = None
-INTERVAL            = eva.SECOND / 2
+INTERVAL_SMOOTHED   = eva.SECOND / 1
+INTERVAL_SNAPSHOT   = eva.SECOND / 2
 LOCK                = M.threading.RLock()
 MARGIN_PERCENTAGE   = 1
 RESIZE_IN_PROGRESS  = False
@@ -25,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260801'
+VERSION             = '0.260802'
 WINDOWS             = None
 ZONES               = None
 
@@ -869,50 +870,55 @@ def target_snapshot():
     try:
         global SNAPSHOT
 
-        by_thread = lambda cpu: cpu.thread
-        chrono    = eva.Chrono(timeout=INTERVAL)
-        fields    = tuple( field.name for field in M.dataclasses.fields(CPUSnapshot) )
-        maximum   = TEMPERATURE_MINIMUM
-        minimum   = TEMPERATURE_MAXIMUM
-        samples   = M.collections.deque()
+        by_thread        = lambda cpu: cpu.thread
+        calc_timeout     = lambda interval: interval - (clock.elapsed % interval) if interval else 0.0
+        clock            = eva.Chrono()
+        cpu_fields       = tuple( field.name for field in M.dataclasses.fields(CPUSnapshot) )
+        max_temp         = TEMPERATURE_MINIMUM
+        min_temp         = TEMPERATURE_MAXIMUM
+        smoothed_chrono  = eva.Chrono(timeout=0)
+        smoothed_samples = M.collections.deque()
+        snapshot_chrono  = eva.Chrono(timeout=0)
 
         while True:
-            chrono.reset()
+            while smoothed_samples and smoothed_samples[0].chrono.expired:
+                smoothed_samples.popleft()
 
-            while samples:
-                if samples[0].chrono.expired:
-                    samples.popleft()
-                else:
-                    break
-
-            cpus        = []
-            load        = eva.CPU.load
             temperature = eva.CPU.temperature
-            maximum     = max(temperature, maximum) if BREATHER.expired else temperature
-            minimum     = min(temperature, minimum)
-            sample      = eva.N(chrono=eva.Chrono(timeout=TIMEOUT_SMOOTHED), temperature=temperature)
 
-            for cpu in eva.CPU.get_cpus(auto=True, online=True):
-                kwargs = { field: getattr(cpu, field) for field in fields }
-                cpu    = CPUSnapshot(**kwargs)
+            if smoothed_chrono.expired or not smoothed_samples:
+                sample = eva.N(chrono=eva.Chrono(timeout=TIMEOUT_SMOOTHED), temperature=temperature)
 
-                cpus.append(cpu)
+                smoothed_samples.append(sample)
+                smoothed_chrono.reset(timeout=calc_timeout(INTERVAL_SMOOTHED))
 
-            cpus.sort(key=by_thread)
-            samples.append(sample)
+            if snapshot_chrono.expired:
+                cpus_samples = []
+                load         = eva.CPU.load
+                max_temp     = max(temperature, max_temp) if BREATHER.expired else temperature
+                min_temp     = min(temperature, min_temp)
 
-            kwargs             = {}
-            kwargs['cpus']     = tuple(cpus)
-            kwargs['load']     = load
-            kwargs['maximum']  = maximum
-            kwargs['minimum']  = minimum
-            kwargs['current']  = temperature
-            kwargs['smoothed'] = M.statistics.mean( sample.temperature for sample in samples )
-            SNAPSHOT           = ProcessorSnapshot(**kwargs)
+                for cpu in eva.CPU.get_cpus(auto=True, online=True):
+                    kwargs = { field: getattr(cpu, field) for field in cpu_fields }
+                    sample = CPUSnapshot(**kwargs)
 
-            EVENTS.screen.set()
+                    cpus_samples.append(sample)
 
-            if EVENTS.bye.wait(chrono.remaining):
+                cpus_samples.sort(key=by_thread)
+
+                kwargs             = {}
+                kwargs['cpus']     = tuple(cpus_samples)
+                kwargs['load']     = load
+                kwargs['maximum']  = max_temp
+                kwargs['minimum']  = min_temp
+                kwargs['current']  = temperature
+                kwargs['smoothed'] = M.statistics.mean( sample.temperature for sample in smoothed_samples )
+                SNAPSHOT           = ProcessorSnapshot(**kwargs)
+
+                snapshot_chrono.reset(timeout=calc_timeout(INTERVAL_SNAPSHOT))
+                EVENTS.screen.set()
+
+            if EVENTS.bye.wait(min(smoothed_chrono.remaining, snapshot_chrono.remaining)):
                 break
     finally:
         EVENTS.bye.set()
