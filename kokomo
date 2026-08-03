@@ -14,8 +14,8 @@ FAHRENHEIT          = False
 FONTS               = None
 GLYPHS              = None
 GUIDES              = None
-INTERVAL_SMOOTHED   = eva.SECOND / 1
-INTERVAL_SNAPSHOT   = eva.SECOND / 2
+INTERVAL_SMOOTHED   = eva.SECOND
+INTERVAL_SNAPSHOT   = eva.SECOND
 LOCK                = M.threading.RLock()
 MARGIN_PERCENTAGE   = 1
 RESIZE_IN_PROGRESS  = False
@@ -26,7 +26,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '0.260802'
+VERSION             = '0.260803'
 WINDOWS             = None
 ZONES               = None
 
@@ -312,7 +312,7 @@ def calc_guide_position(*, guides, index, length, margin):
     guides = eva.normalize_integer(guides, minimum=2)
     length = eva.normalize_integer(length, minimum=1)
     margin = eva.normalize_integer(margin, minimum=0)
-    index  = eva.normalize_float(index, maximum=guides, minimum=1)
+    index  = eva.normalize_float(index, maximum=guides, minimum=1.0)
 
     windows  = guides - 1
     free     = length - (guides * margin)
@@ -452,11 +452,12 @@ def calc_positions_and_sizes(*, cpus, height, width):
 
 
 def main():
-    global ANSI, EVENTS, FAHRENHEIT, FONTS, GLYPHS, GUIDES, STRESS, WINDOWS, ZONES
+    global ANSI, EVENTS, FAHRENHEIT, FONTS, GLYPHS, GUIDES, INTERVAL_SNAPSHOT, STRESS, WINDOWS, ZONES
 
     if arguments := parse_arguments():
-        FAHRENHEIT = arguments.fahrenheit
-        STRESS     = arguments.stress
+        FAHRENHEIT        = arguments.fahrenheit
+        INTERVAL_SNAPSHOT = arguments.interval
+        STRESS            = arguments.stress
 
         if arguments.help:
             show_usage_and_exit(error=False)
@@ -516,20 +517,32 @@ def parse_arguments():
 
     parser       = M.argparse.ArgumentParser(add_help=False, allow_abbrev=False, exit_on_error=False)
     parser.error = argparse_error_handler
+    regex        = M.re.compile(r'^(0|[1-9][0-9]*)(\.[0-9]+)?$')
 
-    parser.add_argument('-f', '--fahrenheit', action='count', default=0)
-    parser.add_argument('-h', '--help',       action='count', default=0)
-    parser.add_argument('-s', '--stress',     action='count', default=0)
+    parser.add_argument('-f', '--fahrenheit', action='count',  default=0)
+    parser.add_argument('-h', '--help',       action='count',  default=0)
+    parser.add_argument('-i', '--interval',   action='append', default=[])
+    parser.add_argument('-s', '--stress',     action='count',  default=0)
 
     try:
         arguments = parser.parse_args()
+        flags     = tuple( value for value in vars(arguments).values() if isinstance(value, int) )
+        interval  = arguments.interval
 
-        if any( argument > 1 for argument in vars(arguments).values() ):
+        if any( argument > 1 for argument in flags ):
+            argparse_error_handler()
+
+        if len(interval) > 1:
+            argparse_error_handler()
+        elif not interval:
+            interval = INTERVAL_SNAPSHOT
+        elif not regex.fullmatch(interval := interval[0]):
             argparse_error_handler()
 
         ret            = eva.N()
         ret.fahrenheit = bool(arguments.fahrenheit)
         ret.help       = bool(arguments.help)
+        ret.interval   = eva.normalize_float(interval, maximum=60.0, minimum=0.0, precision=3)
         ret.stress     = bool(arguments.stress)
     except M.argparse.ArgumentError:
         ret = False
@@ -695,7 +708,7 @@ def select_color_by_temperature(value, /):
 
 
 def show_usage_and_exit(*, error):
-    arguments = '[-f|--fahrenheit] [-h|--help] [-s|--stress]'
+    arguments = '[-f|--fahrenheit] [-h|--help] [-i|--interval INTERVAL] [-s|--stress]'
     error     = bool(error)
     code      = int(error)
     printx    = eva.printe if error else eva.printo
