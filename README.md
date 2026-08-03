@@ -32,6 +32,10 @@ The following options are available:
 
   Displays a simple help screen and exits.
 
+* `-i INTERVAL`, `--interval INTERVAL`
+
+  Sets the update interval. By default, the interval is 1 second. The value must be between 0 and 60 seconds. Decimal values are accepted.
+
 * `-s`, `--stress`
 
   By default, the program starts in monitor mode only. To prevent accidental activation, stress tests cannot be started in this mode. This option must be used to enable stress mode. It is important to understand that stress mode does not start a stress test automatically. It only allows a stress test to be started.
