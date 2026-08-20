@@ -1,7 +1,7 @@
 <h1 align="center">KOKOMO</h1>
 
 <div align="center">
-<img src="images/ubuntu-0.png">
+<img src="images/0.png">
 </div>
 
 Kokomo is a Linux terminal tool that lets you monitor CPU temperature and load in real time (monitor mode), and push it to its limits with stress tests (stress mode).
@@ -91,35 +91,23 @@ The `ESC` or `Q` keys can be used to exit the program.
 ## SCREENSHOTS
 
 <div align="center">
-<img src="images/ubuntu-1.png">
+<img src="images/1.png">
 </div>
 
 <br>
 
 <div align="center">
-<img src="images/ubuntu-2.png">
+<img src="images/2.png">
 </div>
 
 <br>
 
 <div align="center">
-<img src="images/plasma-1.png">
+<img src="images/3.png">
 </div>
 
 <br>
 
 <div align="center">
-<img src="images/plasma-2.png">
-</div>
-
-<br>
-
-<div align="center">
-<img src="images/rpi.png">
-</div>
-
-<br>
-
-<div align="center">
-<img src="images/xterm.png">
+<img src="images/4.png">
 </div>
