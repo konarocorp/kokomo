@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.260819'
+VERSION             = '1.260823'
 WINDOWS             = None
 ZONES               = None
 
@@ -2410,6 +2410,7 @@ class HistogramWindow(Window):
 
         self._blank_column = Canvas(target=self)
         self._cache        = M.collections.deque(maxlen=0)
+        self._fingerprints = M.collections.deque(maxlen=0)
 
         __class__.set_geometry(self)
 
@@ -2437,6 +2438,14 @@ class HistogramWindow(Window):
                 self._cache = M.collections.deque(cache, maxlen=maxlen)
 
 
+    def _adjust_fingerprints_length(self, /):
+        fingerprints = self._fingerprints
+        width        = self._viewport.width
+
+        if fingerprints.maxlen != width:
+            self._fingerprints = M.collections.deque(fingerprints, maxlen=width)
+
+
     def _render_helper_column(self, /, *, column, snapshot):
         if not isinstance(column, tuple) or not isinstance(snapshot, ProcessorSnapshot):
             raise TypeError
@@ -2447,50 +2456,80 @@ class HistogramWindow(Window):
         height            = self._inner.height
         load              = preformat_load(snapshot.load)
         load_cells        = load.value / 100 * height
+        load_color        = load.color.FG_LIGHT
+        load_level        = 0
         temperature       = preformat_temperature(snapshot.current)
         temperature_cells = eva.normalize_integer(min(temperature.celsius, 100) / 100 * height)
+        temperature_color = temperature.color.BG_DARK
+        temperature_level = 0
 
         for y, source, destination in zip(range(height), blank, column):
             style = {}
 
             if temperature_cells > y:
-                style['bg']    = temperature.color.BG_DARK
-                style['glyph'] = self._space
+                temperature_level = temperature_level + 1
+                style['bg']       = temperature_color
+                style['glyph']    = self._space
 
             if eva.normalize_integer(load_cells) > y:
-                style['fg']    = load.color.FG_LIGHT
+                load_level     = load_level + 1
+                style['fg']    = load_color
                 style['glyph'] = glyphs.ns
             elif M.math.ceil(load_cells) > y:
-                style['fg']    = load.color.FG_LIGHT
+                load_level     = load_level + 0.5
+                style['fg']    = load_color
                 style['glyph'] = glyphs.s
 
             destination.copy_style_from(source, **style)
 
+        return height, load_level, temperature_level, load_color.value, temperature_color.value
+
 
     def render(self, /, *, force=False):
         with self.locked():
-            force   = bool(force)
-            inner   = self._inner
-            columns = inner.columns
+            fingerprints = self._fingerprints
+            force        = bool(force)
+            inner        = self._inner
+            columns      = inner.columns
 
             if force:
                 cache = reversed(self._cache)
+
+                dummy = ProcessorSnapshot(
+                    cpus=(),
+                    current=0.0,
+                    load=0.0,
+                    maximum=0.0,
+                    minimum=0.0,
+                    smoothed=0.0,
+                )
 
                 for x in range(inner.width - 1, -1, -1):
                     column   = columns[x]
                     snapshot = next(cache, False)
 
-                    if snapshot:
-                        self._render_helper_column(column=column, snapshot=snapshot)
-                    else:
-                        for source, destination in zip(self._blank_column.cells, column):
-                            destination.copy_style_from(source)
-            elif columns:
-                for right, left in zip(columns[1:], columns):
-                    for source, destination in zip(right, left):
-                        destination.copy_style_from(source)
+                    if not snapshot:
+                        snapshot = dummy
 
-                self._render_helper_column(column=columns[-1], snapshot=self.snapshot)
+                    fingerprint = self._render_helper_column(column=column, snapshot=snapshot)
+
+                    fingerprints.appendleft(fingerprint)
+            elif columns:
+                iterator         = iter(fingerprints)
+                left_fingerprint = next(iterator, None)
+
+                for right, left in zip(columns[1:], columns):
+                    right_fingerprint = next(iterator, None)
+
+                    if left_fingerprint is None or left_fingerprint != right_fingerprint:
+                        for source, destination in zip(right, left):
+                            destination.copy_style_from(source)
+
+                    left_fingerprint = right_fingerprint
+
+                fingerprint = self._render_helper_column(column=columns[-1], snapshot=self.snapshot)
+
+                fingerprints.append(fingerprint)
 
 
     def set_geometry(self, /, *args, **kwargs):
@@ -2498,6 +2537,7 @@ class HistogramWindow(Window):
             super().set_geometry(*args, **kwargs)
             self._adjust_blank_column()
             self._adjust_cache_length()
+            self._adjust_fingerprints_length()
 
 
 
