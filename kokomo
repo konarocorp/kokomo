@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.260823'
+VERSION             = '1.260824'
 WINDOWS             = None
 ZONES               = None
 
@@ -2402,6 +2402,8 @@ class HistogramWindow(Window):
             snapshot = self.snapshot
 
             if not cache or cache[-1] != snapshot:
+                self._pending = True
+
                 cache.append(snapshot)
 
 
@@ -2411,6 +2413,7 @@ class HistogramWindow(Window):
         self._blank_column = Canvas(target=self)
         self._cache        = M.collections.deque(maxlen=0)
         self._fingerprints = M.collections.deque(maxlen=0)
+        self._pending      = False
 
         __class__.set_geometry(self)
 
@@ -2514,7 +2517,7 @@ class HistogramWindow(Window):
                     fingerprint = self._render_helper_column(column=column, snapshot=snapshot)
 
                     fingerprints.appendleft(fingerprint)
-            elif columns:
+            elif columns and self._pending:
                 iterator         = iter(fingerprints)
                 left_fingerprint = next(iterator, None)
 
@@ -2530,6 +2533,8 @@ class HistogramWindow(Window):
                 fingerprint = self._render_helper_column(column=columns[-1], snapshot=self.snapshot)
 
                 fingerprints.append(fingerprint)
+
+            self._pending = False
 
 
     def set_geometry(self, /, *args, **kwargs):
