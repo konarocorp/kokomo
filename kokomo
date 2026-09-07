@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.260824'
+VERSION             = '1.260907'
 WINDOWS             = None
 ZONES               = None
 
@@ -1711,15 +1711,151 @@ class View(Grid):
 
 
 
-class Window(Canvas):
-    _mask_down    = 0b01
-    _mask_empty   = 0b00
-    _mask_up      = 0b10
-    _mask_both    = _mask_down | _mask_up
+class Scroll(View):
     _glyph_thumb  = '█'
-    _glyphs_mask  = {_mask_both: '↕', _mask_down: '↓', _mask_empty: '┆', _mask_up: '↑'}
     _style_border = {**Base._style_default, 'dim': True}
     _style_scroll = {**Base._style_default}
+    _style_title  = {**Base._style_default}
+
+
+    @property
+    def step(self, /):
+        with self.locked():
+            return eva.normalize_integer(self._ratio * self._steps)
+
+
+    @property
+    def steps(self, /):
+        with self.locked():
+            return self._steps
+
+
+    @steps.setter
+    def steps(self, value, /):
+        with self.locked():
+            value = eva.normalize_integer(value, minimum=0)
+
+            if value != self._steps:
+                self._force = True
+                self._steps = value
+
+
+    def __init__(self, /, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self._force = True
+        self._ratio = 0.0
+        self._steps = 0
+
+
+    def _move_steps(self, delta, /):
+        delta = eva.normalize_integer(delta)
+        ret   = False
+        step  = eva.clamp(self.step + delta, maximum=self._steps, minimum=0)
+
+        if self.step != step:
+            ret         = True
+            self._force = True
+            self._ratio = step / self._steps if self._steps else 0.0
+
+        return ret
+
+
+    def backward(self, /):
+        with self.locked():
+            return self._move_steps(-1)
+
+
+    def forward(self, /):
+        with self.locked():
+            return self._move_steps(1)
+
+
+    def render(self, /, *, force=False):
+        with self.locked():
+            force       = bool(force) or self._force
+            self._force = False
+
+            if not force or not self._cells or not self._steps:
+                return
+
+            first_position       = 0
+            glyphless_border     = { k: v for k, v in self._style_border.items() if k != 'glyph' }
+            glyphless_scroll     = { k: v for k, v in self._style_scroll.items() if k != 'glyph' }
+            height               = self._height
+            mask_backward        = 0b10
+            mask_blank           = 0b00
+            mask_forward         = 0b01
+            mask_both            = mask_forward | mask_backward
+            space                = self._space
+            step                 = self.step
+            steps                = self._steps
+            total                = len(self._cells)
+            last_position        = max(total - 1, 0)
+            penultimate_position = max(total - 2, 0)
+            second_position      = min(first_position + 1, penultimate_position)
+            width                = self._width
+            x                    = self._x
+            y                    = self._y
+
+            if height > width or x > y:
+                glyphs_mask = {
+                    mask_backward: '↑',
+                    mask_blank:    '┆',
+                    mask_both:     '↕',
+                    mask_forward:  '↓',
+                }
+            elif width > height or y > x:
+                glyphs_mask = {
+                    mask_backward: '←',
+                    mask_blank:    '┄',
+                    mask_both:     '↔',
+                    mask_forward:  '→',
+                }
+            else:
+                glyphs_mask = {
+                    mask_backward: space,
+                    mask_blank:    space,
+                    mask_both:     space,
+                    mask_forward:  space,
+                }
+
+            for position, cell in enumerate(self._cells):
+                bitmask = mask_blank
+
+                if position == first_position and step > first_position:
+                    bitmask = bitmask | mask_backward
+
+                if position == last_position and step < steps:
+                    bitmask = bitmask | mask_forward
+
+                glyph     = glyphs_mask[bitmask]
+                glyphless = glyphless_scroll if bitmask else glyphless_border
+
+                cell.set_style(**glyphless, glyph=glyph)
+
+            if total > 1 and (total > 2 or step == 0 or step == steps):
+                maximum  = last_position if step == steps else penultimate_position
+                minimum  = second_position if step else first_position
+                length   = max(height - 1, width - 1, 0)
+                ratio    = step / steps if steps else 0.0
+                position = eva.normalize_integer(ratio * length, maximum=maximum, minimum=minimum)
+                thumb    = self._cells[position]
+
+                thumb.set_style(**glyphless_scroll, glyph=self._glyph_thumb)
+
+
+    def set_geometry(self, /, *args, **kwargs):
+        with self.locked():
+            super().set_geometry(*args, **kwargs)
+
+            self._force = True
+
+
+
+
+class Window(Canvas):
+    _style_border = {**Base._style_default, 'dim': True}
     _style_title  = {**Base._style_default}
 
 
@@ -1785,13 +1921,10 @@ class Window(Canvas):
         self._padding_left  = View(target=self)
         self._padding_right = View(target=self)
         self._redecoration  = True
-        self._scroll        = View(target=self)
-        self._scroll_index  = 0
         self._snapshot      = None
         self._title         = View(target=self._border_top)
         self._title_string  = self._empty
         self._viewport      = View(target=self)
-        self._inner         = View(target=self._viewport)
 
         self.title = self._empty if title is None else title
 
@@ -1834,33 +1967,9 @@ class Window(Canvas):
         self._padding_right.set_geometry(**geometry_right)
 
 
-    def _adjust_scroll(self, /):
-        if self._border:
-            self._scroll.set_geometry(height=-2, width=1, x=self._width - 1, y=1)
-        else:
-            self._scroll.set_geometry(**self._default_geometry)
-
-
-    def _adjust_scroll_index(self, scroll, /):
-        minimum = 0
-        maximum = max(self._inner.height - self._viewport.height, minimum)
-
-        scroll = eva.normalize_integer(scroll)
-        scroll = self._scroll_index + scroll
-        scroll = eva.clamp(scroll, minimum, maximum)
-
-        if self._scroll_index != scroll:
-            self._redecoration = True
-            self._scroll_index = scroll
-
-            return True
-        else:
-            return False
-
-
     def _adjust_title(self, /):
         border   = self._border_top
-        geometry = {**self._default_geometry}
+        geometry = self._default_geometry
 
         if self._border:
             text = self._space + self._title_string + self._space
@@ -1873,6 +1982,15 @@ class Window(Canvas):
                 geometry = {'height': 1, 'width': length, 'x': x, 'y': 0}
 
         self._title.set_geometry(**geometry)
+
+
+    def _adjust_viewport(self, /):
+        if self._border:
+            geometry = {'height': -2, 'width': -4, 'x': 2, 'y': 1}
+        else:
+            geometry = {'height': self._height, 'width': self._width, 'x': 0, 'y': 0}
+
+        self._viewport.set_geometry(**geometry)
 
 
     def _render_helper_border(self, /):
@@ -1911,46 +2029,6 @@ class Window(Canvas):
         right.set_style(**style)
 
 
-    def _render_helper_scroll(self, /):
-        first_position       = 0
-        glyphless_border     = { k: v for k, v in self._style_border.items() if k != 'glyph' }
-        glyphless_scroll     = { k: v for k, v in self._style_scroll.items() if k != 'glyph' }
-        index                = self._scroll_index
-        inner                = self._inner
-        second_position      = 1
-        scroll               = self._scroll
-        viewport             = self._viewport
-        last_position        = viewport.height - 1
-        penultimate_position = viewport.height - 2
-        steps                = inner.height - viewport.height
-
-        if not scroll.cells or inner.height <= viewport.height:
-            return
-
-        for y, cell in enumerate(scroll.cells):
-            bitmask = self._mask_empty
-
-            if y == first_position and index > first_position:
-                bitmask = bitmask | self._mask_up
-
-            if y == last_position and index < steps:
-                bitmask = bitmask | self._mask_down
-
-            glyph     = self._glyphs_mask[bitmask]
-            glyphless = glyphless_scroll if bitmask else glyphless_border
-
-            cell.set_style(**glyphless, glyph=glyph)
-
-        if viewport.height > 2:
-            maximum  = last_position if index == steps else penultimate_position
-            minimum  = second_position if index else first_position
-            position = (index / steps) * last_position
-            position = eva.normalize_integer(position, maximum=maximum, minimum=minimum)
-            thumb    = scroll.cells[position]
-
-            thumb.set_style(**glyphless_scroll, glyph=self._glyph_thumb)
-
-
     def _render_helper_title(self, /):
         glyphless = { k: v for k, v in self._style_title.items() if k != 'glyph' }
         text      = self._space + self._title_string + self._space
@@ -1973,7 +2051,6 @@ class Window(Canvas):
                 if force or self._redecoration:
                     self._render_helper_border()
                     self._render_helper_padding()
-                    self._render_helper_scroll()
                     self._render_helper_title()
 
                     self._redecoration = False
@@ -1986,45 +2063,16 @@ class Window(Canvas):
 
 
     def render(self, /, *, force=False):
-        self.apply_noise_render()
-
-
-    def scroll_down(self, /):
-        with self.locked():
-            if self._adjust_scroll_index(1):
-                self.paint()
-
-
-    def scroll_up(self, /):
-        with self.locked():
-            if self._adjust_scroll_index(-1):
-                self.paint()
+        self._viewport.apply_noise_render()
 
 
     def set_geometry(self, /, *args, **kwargs):
         with self.locked():
             super().set_geometry(*args, **kwargs)
-
-            get_viewport_size = lambda: (viewport.height, viewport.width)
-            inner             = self._inner
-            viewport          = self._viewport
-            previous          = get_viewport_size()
-
-            if self._border:
-                geometry = {'height': -2, 'width': -4, 'x': 2, 'y': 1}
-            else:
-                geometry = {'height': self._height, 'width': self._width, 'x': 0, 'y': 0}
-
-            viewport.set_geometry(**geometry)
-
-            if previous == get_viewport_size():
-                return
-
             self._adjust_border()
             self._adjust_padding()
-            self._adjust_scroll()
             self._adjust_title()
-            inner.set_geometry(height=viewport.height, width=viewport.width, x=0, y=0)
+            self._adjust_viewport()
 
             self._redecoration = True
 
@@ -2059,7 +2107,7 @@ class CPUsWindow(Window):
             current = len(self._snapshot.cpus)
 
             if previous != current:
-                self._adjust_inner_height()
+                self._adjust_scroll()
 
 
     def __init__(self, /, *args, **kwargs):
@@ -2070,6 +2118,7 @@ class CPUsWindow(Window):
         self._label_left  = View(target=self._viewport)
         self._label_right = View(target=self._viewport)
         self._reverse     = True
+        self._scroll      = Scroll(target=self)
 
         __class__.set_geometry(self)
 
@@ -2086,15 +2135,6 @@ class CPUsWindow(Window):
 
         bar.set_geometry(height=1, width=width)
         bar.write_text(text, **glyphless)
-
-
-    def _adjust_inner_height(self, /):
-        if self._snapshot:
-            header = 1 if self._viewport.height > 1 else 0
-            height = len(self._snapshot.cpus) + header
-
-            self._inner.set_geometry(height=height)
-            self._adjust_scroll_index(0)
 
 
     def _adjust_labels(self, /):
@@ -2195,6 +2235,22 @@ class CPUsWindow(Window):
         )
 
 
+    def _adjust_scroll(self, /):
+        geometry = self._default_geometry
+        scroll   = self._scroll
+        snapshot = self._snapshot
+        viewport = self._viewport
+
+        if self._border:
+            geometry = {'height': -2, 'width': 1, 'x': self._width - 1, 'y': 1}
+
+        if snapshot:
+            height       = len(snapshot.cpus) + int(viewport.height > 1) # cpus + header
+            scroll.steps = max(height - viewport.height, 0)
+
+        scroll.set_geometry(**geometry)
+
+
     def _render_helper_bar(self, /, *, row, snapshot):
         if not isinstance(row, tuple) or not isinstance(snapshot, CPUSnapshot):
             raise TypeError
@@ -2221,21 +2277,21 @@ class CPUsWindow(Window):
 
 
     def _render_helper_header(self, /):
-        focus   = self._fields[0]
-        inner   = self._inner
-        layout  = self._layout
-        left    = self._label_left
-        minutes = 0
-        right   = self._label_right
-        seconds = 0
-        space   = self._space
-        views   = layout.rows[0] if layout and len(layout.rows) > 1 else False
+        focus    = self._fields[0]
+        layout   = self._layout
+        left     = self._label_left
+        minutes  = 0
+        right    = self._label_right
+        seconds  = 0
+        space    = self._space
+        viewport = self._viewport
+        views    = layout.rows[0] if layout and len(layout.rows) > 1 else False
 
         if views:
             kwargs    = { name: getattr(views, name) for name in self._fields_sortables }
             sortables = eva.N(**kwargs)
 
-            for cell in inner.rows[0]:
+            for cell in viewport.rows[0]:
                 cell.set_style(**self._style_default)
         else:
             return
@@ -2274,7 +2330,7 @@ class CPUsWindow(Window):
                 continue
 
             glyphless = { k: v for k, v in style.items() if k != 'glyph' }
-            x         = (inner.width - length) // 2
+            x         = (viewport.width - length) // 2
             padding   = space * max(x - label.x, 0)
             text      = padding + message
             text      = text.ljust(label.width, space)
@@ -2296,7 +2352,7 @@ class CPUsWindow(Window):
 
             if force:
                 if layout:
-                    self._inner.apply_default_render()
+                    self._viewport.apply_default_render()
 
                     fields = {
                         'frequency':   preformat_frequency(None, compact=layout.compact, ghz=layout.ghz),
@@ -2323,13 +2379,16 @@ class CPUsWindow(Window):
             if not layout:
                 return
 
+            if self._border:
+                self._scroll.render(force=force)
+
             if focus != self._focus_placeholder:
                 cpus = sorted(cpus, key=by_focus, reverse=self._reverse)
 
             self._render_helper_header()
 
             for y, row in enumerate(layout.rows[1:] if len(layout.rows) > 1 else layout.rows):
-                cpu         = cpus[self._scroll_index + y]
+                cpu         = cpus[self._scroll.step + y]
                 frequency   = preformat_frequency(cpu.frequency, compact=layout.compact, ghz=layout.ghz)
                 load        = preformat_load(cpu.load, integer=layout.integer)
                 maxscal     = preformat_frequency(cpu.maxscal, compact=layout.compact, ghz=layout.ghz)
@@ -2355,6 +2414,18 @@ class CPUsWindow(Window):
                 self._render_helper_bar(row=row.bar.cells, snapshot=cpu)
 
 
+    def scroll_down(self, /):
+        with self.locked():
+            if self._scroll.forward():
+                self.paint()
+
+
+    def scroll_up(self, /):
+        with self.locked():
+            if self._scroll.backward():
+                self.paint()
+
+
     def select_left(self, /):
         with self.locked():
             self._fields.rotate(1)
@@ -2372,15 +2443,16 @@ class CPUsWindow(Window):
     def set_geometry(self, /, *args, **kwargs):
         with self.locked():
             super().set_geometry(*args, **kwargs)
-            self._adjust_inner_height()
             self._adjust_layout()
             self._adjust_blank_bar()
             self._adjust_labels()
+            self._adjust_scroll()
 
 
     def toggle_reverse(self, /):
         with self.locked():
             self._reverse = not self._reverse
+
             self.paint()
 
 
@@ -2456,7 +2528,7 @@ class HistogramWindow(Window):
         blank             = reversed(self._blank_column.cells)
         column            = reversed(column)
         glyphs            = GLYPHS.heavy
-        height            = self._inner.height
+        height            = self._viewport.height
         load              = preformat_load(snapshot.load)
         load_cells        = load.value / 100 * height
         load_color        = load.color.FG_LIGHT
@@ -2492,8 +2564,8 @@ class HistogramWindow(Window):
         with self.locked():
             fingerprints = self._fingerprints
             force        = bool(force)
-            inner        = self._inner
-            columns      = inner.columns
+            viewport     = self._viewport
+            columns      = viewport.columns
 
             if force:
                 cache = reversed(self._cache)
@@ -2507,7 +2579,7 @@ class HistogramWindow(Window):
                     smoothed=0.0,
                 )
 
-                for x in range(inner.width - 1, -1, -1):
+                for x in range(viewport.width - 1, -1, -1):
                     column   = columns[x]
                     snapshot = next(cache, False)
 
@@ -2555,6 +2627,8 @@ class ValueWindow(Window):
 
     def __init__(self, /, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self._inner = View(target=self._viewport)
 
         with self.locked():
             __class__._instances.add(self)
