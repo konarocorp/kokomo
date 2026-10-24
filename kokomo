@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.260907'
+VERSION             = '1.261024'
 WINDOWS             = None
 ZONES               = None
 
@@ -2473,7 +2473,9 @@ class HistogramWindow(Window):
             cache    = self._cache
             snapshot = self.snapshot
 
-            if not cache or cache[-1] != snapshot:
+            # Compare by identity: consecutive samples can have equal values,
+            # and repaints reassign the same object.
+            if not cache or cache[-1] is not snapshot:
                 self._pending = True
 
                 cache.append(snapshot)
