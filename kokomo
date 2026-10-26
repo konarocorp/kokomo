@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.261024'
+VERSION             = '1.261025'
 WINDOWS             = None
 ZONES               = None
 
@@ -862,8 +862,7 @@ def target_screen():
 
                 window.paint(force=recalculate)
 
-            previous    = current
-            recalculate = False
+            previous = current
     finally:
         EVENTS.bye.set()
 
