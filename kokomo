@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.261025'
+VERSION             = '1.261101'
 WINDOWS             = None
 ZONES               = None
 
@@ -964,6 +964,7 @@ def target_stress():
                         break
                     else:
                         EVENTS.stress.wait()
+                        continue
 
                 for task in list(tasks):
                     try:
