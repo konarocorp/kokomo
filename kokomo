@@ -24,7 +24,7 @@ TEMPERATURE_MAXIMUM = 999.0
 TEMPERATURE_MINIMUM = 0.0
 TERMINAL            = eva.Terminal()
 TIMEOUT_SMOOTHED    = eva.SECOND * 10
-VERSION             = '1.261101'
+VERSION             = '1.261102'
 WINDOWS             = None
 ZONES               = None
 
@@ -966,19 +966,22 @@ def target_stress():
                         EVENTS.stress.wait()
                         continue
 
-                for task in list(tasks):
-                    try:
-                        affinity = M.os.sched_getaffinity(task.process.pid)
-                    except OSError:
-                        affinity = None
+                cpus = set(eva.CPU.get_cpus(online=True))
 
-                    if affinity != {task.cpu} or not task.process.is_alive():
-                        append_task(task.cpu)
+                for task in list(tasks):
+                    if task.cpu in cpus:
+                        try:
+                            affinity = M.os.sched_getaffinity(task.process.pid)
+                        except OSError:
+                            affinity = None
+
+                        if affinity != {task.cpu} or not task.process.is_alive():
+                            append_task(task.cpu)
+                            discard_task(task)
+                    else:
                         discard_task(task)
 
-                cpus = set(eva.CPU.get_cpus(online=True)) - set( task.cpu for task in tasks )
-
-                for cpu in cpus:
+                for cpu in cpus - set( task.cpu for task in tasks ):
                     append_task(cpu)
         finally:
             EVENTS.bye.set()
